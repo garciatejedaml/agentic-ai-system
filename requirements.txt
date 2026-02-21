@@ -1,0 +1,24 @@
+# Orchestration
+langgraph>=0.2.45
+langchain>=0.3.0
+langchain-core>=0.3.0
+
+# LLM Providers
+langchain-anthropic>=0.3.0   # Local dev (Anthropic API)
+langchain-aws>=0.2.0          # AWS Bedrock (production)
+anthropic>=0.40.0
+boto3>=1.35.0
+
+# Strands Agents (AWS multi-agent framework)
+strands-agents>=0.1.0
+# strands-agents-tools>=0.1.0  # Uncomment for built-in tools
+
+# RAG
+chromadb>=0.5.0
+langchain-chroma>=0.1.4
+sentence-transformers>=3.0.0  # Local embeddings (offline-capable)
+
+# Utils
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+rich>=13.0.0                  # Pretty terminal output
