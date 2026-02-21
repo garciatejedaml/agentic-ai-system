@@ -1,0 +1,35 @@
+AWS Strands Agents: A Simple Framework for Building AI Agents
+
+Strands Agents is an open-source framework released by AWS for building AI agents. It follows a model-driven approach where the LLM controls the agent loop, deciding when and how to use tools to accomplish tasks.
+
+Core Components:
+
+1. Agent
+The Agent class is the primary abstraction. You instantiate it with a model, optional tools, and a system prompt. Calling the agent like a function (agent("your query")) triggers the agentic loop.
+
+2. Tools
+Tools are Python functions decorated with @tool. They have a docstring that describes their purpose and arguments — the LLM reads this docstring to decide when and how to invoke them. Strands automatically handles tool calling and result passing.
+
+3. Models
+Strands supports multiple LLM backends:
+- BedrockModel: Uses Amazon Bedrock (for AWS production deployments)
+- LiteLLMModel: Bridges to any LiteLLM-supported provider (Anthropic API, OpenAI, etc.) — ideal for local development
+- OllamaModel: For fully local models via Ollama
+
+4. Multi-Agent Patterns
+Strands enables multi-agent systems through the agent-as-tool pattern. You can wrap one agent's invocation inside a @tool function and give that tool to an orchestrator agent. This creates hierarchical agent structures.
+
+5. Streaming
+Strands supports streaming responses, useful for long-running agent tasks where you want to show progress incrementally.
+
+Advantages for AWS Deployments:
+- Native Bedrock integration with IAM roles (no API keys in production)
+- Works well with AWS Lambda, ECS, and EKS
+- Supports cross-region inference profiles in Bedrock
+- Integrates with AWS observability (CloudWatch, X-Ray)
+
+Local Development:
+For local development on a MacBook, use LiteLLMModel with the Anthropic provider. Set ANTHROPIC_API_KEY in your .env file. The same code works in production with BedrockModel by changing the LLM_PROVIDER environment variable.
+
+RAG Integration:
+Strands agents can use RAG as a tool. The search_knowledge_base tool searches a vector store (e.g., ChromaDB locally or OpenSearch on AWS) and returns relevant passages. The agent decides when to invoke this tool based on the query requirements.
