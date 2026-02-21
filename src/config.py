@@ -24,6 +24,10 @@ class Config:
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
     RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", "4"))
 
+    # MCP External Servers
+    BRAVE_API_KEY: str = os.getenv("BRAVE_API_KEY", "")
+    MCP_FILESYSTEM_PATH: str = os.getenv("MCP_FILESYSTEM_PATH", "./data")
+
     # Debug
     LANGGRAPH_DEBUG: bool = os.getenv("LANGGRAPH_DEBUG", "false").lower() == "true"
 
