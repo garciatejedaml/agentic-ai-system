@@ -75,8 +75,12 @@ docker/kdb/*.zip
 htmlcov/
 .pytest_cache/
 
-# ── Terraform / AWS CDK (future infra) ────────────────────────────────────────
+# ── Terraform ────────────────────────────────────────────────────────────────
 .terraform/
+.terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
+*.tfplan
+terraform.tfvars
+infra/.terraform/
 cdk.out/

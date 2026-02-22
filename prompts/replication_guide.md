@@ -200,16 +200,20 @@ agentic-ai-system/
 ├── docker-compose.kdb.yml           ← Local KDB+ server
 ├── docker-compose.observability.yml ← Langfuse + Phoenix + ClickHouse + Postgres
 │
-├── infra/                           ← AWS CDK (Python)
-│   ├── app.py                       ← CDK entry point (5 stacks)
-│   ├── cdk.json                     ← CDK configuration
-│   ├── requirements.txt             ← CDK Python deps (aws-cdk-lib)
-│   └── stacks/
-│       ├── network_stack.py         ← VPC, subnets, security groups, VPC endpoints
-│       ├── ecr_stack.py             ← ECR repositories
-│       ├── data_stack.py            ← Aurora pgvector, DynamoDB, SQS, Secrets Manager
-│       ├── iam_stack.py             ← ECS task roles (Bedrock + SQS + DynamoDB)
-│       └── ecs_stack.py             ← ECS cluster, Fargate service, ALB, auto-scaling
+├── infra/                           ← Terraform (AWS)
+│   ├── main.tf                      ← AWS provider + S3 backend (comentado)
+│   ├── variables.tf                 ← Input variables con defaults
+│   ├── locals.tf                    ← Computed values (name_prefix, Bedrock IDs)
+│   ├── outputs.tf                   ← ALB DNS, ECR URL, cluster name, etc.
+│   ├── networking.tf                ← VPC, 3 subnet tiers, NAT, security groups
+│   ├── vpc_endpoints.tf             ← VPC Endpoints: Bedrock, ECR, SQS, S3, CW
+│   ├── ecr.tf                       ← ECR repo + lifecycle policy
+│   ├── iam.tf                       ← Task role (Bedrock+SQS+DynamoDB) + Execution role
+│   ├── data.tf                      ← Aurora pgvector, DynamoDB, SQS, Secrets Manager
+│   ├── ecs.tf                       ← ECS cluster, task def, Fargate service
+│   ├── alb.tf                       ← ALB, target group, listener
+│   ├── autoscaling.tf               ← Auto-scaling CPU/memoria (1–4 tasks)
+│   └── terraform.tfvars.example     ← Template de variables
 │
 └── tests/
     ├── test_graph.py                ← LangGraph node tests
@@ -462,17 +466,18 @@ def get_strands_model():
 
 IAM task role needs: `bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream`.
 
-### CDK deployment
+### Terraform deployment
 
 See `infra/README.md` for full steps. Summary:
 
 ```bash
 cd infra
-pip install -r requirements.txt
-export CDK_DEFAULT_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-export CDK_DEFAULT_REGION=us-east-1
-cdk bootstrap aws://$CDK_DEFAULT_ACCOUNT/$CDK_DEFAULT_REGION
-cdk deploy --all
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your values
+
+terraform init
+terraform plan -out=tfplan
+terraform apply tfplan
 ```
 
 ---

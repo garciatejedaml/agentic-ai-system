@@ -1,0 +1,32 @@
+# ── Copy to terraform.tfvars and fill in your values ─────────────────────────
+# terraform.tfvars is gitignored — never commit it.
+
+aws_region  = "us-east-1"
+environment = "staging"
+app_name    = "agentic-ai"
+
+# Subnets: 2 AZs is enough for staging, use 3 for production
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+# Docker image tag — set to git SHA in CI/CD:
+#   TF_VAR_image_tag=$(git rev-parse --short HEAD) terraform apply
+image_tag = "latest"
+
+# ECS task sizing
+task_cpu    = 1024  # 1 vCPU
+task_memory = 2048  # 2 GB
+
+# Service scaling
+service_desired_count = 1
+service_min_count     = 1
+service_max_count     = 4
+
+# Application feature flags
+kdb_enabled  = "true"   # DuckDB + parquet, no license needed
+amps_enabled = "false"  # requires AMPS server separately
+skip_ingest  = "false"  # set to "true" after first run to skip re-ingestion
+
+# Aurora Serverless v2
+aurora_min_capacity       = 0.5  # auto-pauses when idle
+aurora_max_capacity       = 4
+aurora_deletion_protection = false  # set true for production

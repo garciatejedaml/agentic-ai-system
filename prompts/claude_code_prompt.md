@@ -17,7 +17,7 @@ This is a POC for Bond trading desk analytics.
 - **DuckDB** reading Parquet for the KDB POC (no KDB+ license needed)
 - **AMPS** (60East Technologies) for live pub/sub data (optional, via Docker)
 - **Amazon Bedrock** for production LLM (local dev uses Anthropic API via LiteLLM)
-- **AWS CDK Python** for infrastructure
+- **Terraform** (hashicorp/aws ~> 5.0, hashicorp/random ~> 3.6) for infrastructure
 
 Read `prompts/replication_guide.md` in this repo FIRST — it contains every
 architectural decision, file layout, and implementation detail.
@@ -48,7 +48,7 @@ Build in this order:
 19. `main.py` — CLI entry point
 20. `Dockerfile` + `docker/entrypoint.sh` — Production container
 21. `docker-compose.*.yml` — AMPS, KDB, observability services
-22. `infra/` — AWS CDK stacks (Network, ECR, Data, IAM, ECS)
+22. `infra/` — Terraform: main.tf, variables.tf, locals.tf, outputs.tf, networking.tf, vpc_endpoints.tf, ecr.tf, iam.tf, data.tf, ecs.tf, alb.tf, autoscaling.tf, terraform.tfvars.example
 23. `.env.example`, `requirements.txt`, `.gitignore`
 
 ## Critical constraints
