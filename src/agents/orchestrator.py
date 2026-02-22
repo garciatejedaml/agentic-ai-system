@@ -3,16 +3,18 @@ Strands Multi-Agent Orchestrator
 
 This module is what LangGraph calls as a single node.
 Internally it runs a two-agent pipeline:
-  1. Researcher → searches RAG, produces findings
+  1. Researcher → searches RAG + MCP external tools, produces findings
   2. Synthesizer → crafts the final answer from those findings
 
-The orchestrator is intentionally kept simple for the POC.
-In a real system you could add routing, parallelism, or more agents.
+The orchestrator opens the three MCP servers (Brave Search, Fetch, Filesystem)
+for the duration of the researcher's execution, then closes them automatically.
 """
 from dataclasses import dataclass
 
 from src.agents.researcher import create_researcher
 from src.agents.synthesizer import create_synthesizer
+from src.config import config
+from src.mcp_clients import open_mcp_tools
 
 
 @dataclass
@@ -34,8 +36,7 @@ def run_strands_orchestrator(query: str, rag_context: list[dict]) -> Orchestrato
         OrchestratorResult with research and synthesis strings.
     """
     # ── Step 1: Research ─────────────────────────────────────────────────────
-    researcher = create_researcher()
-
+    # Open MCP servers for the duration of the research phase.
     # We pass pre-retrieved context so the researcher can complement it
     # with its own tool calls if needed.
     pre_context_block = ""
@@ -50,7 +51,11 @@ def run_strands_orchestrator(query: str, rag_context: list[dict]) -> Orchestrato
     research_prompt = (
         f"Research the following question thoroughly: {query}{pre_context_block}"
     )
-    research_response = researcher(research_prompt)
+
+    with open_mcp_tools(docs_path=config.MCP_FILESYSTEM_PATH) as mcp_tools:
+        researcher = create_researcher(extra_tools=mcp_tools)
+        research_response = researcher(research_prompt)
+
     research_text = str(research_response)
 
     # ── Step 2: Synthesize ───────────────────────────────────────────────────

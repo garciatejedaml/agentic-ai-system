@@ -13,6 +13,9 @@ boto3>=1.35.0
 strands-agents>=0.1.0
 # strands-agents-tools>=0.1.0  # Uncomment for built-in tools
 
+# MCP (Model Context Protocol) – required for external MCP server connections
+mcp>=1.0.0
+
 # RAG
 chromadb>=0.5.0
 langchain-chroma>=0.1.4
@@ -22,3 +25,13 @@ sentence-transformers>=3.0.0  # Local embeddings (offline-capable)
 python-dotenv>=1.0.0
 pydantic>=2.0.0
 rich>=13.0.0                  # Pretty terminal output
+
+# Observability – Langfuse + Phoenix (both optional, enabled via OBSERVABILITY_ENABLED)
+# Shared OTEL exporter (sends traces to both backends simultaneously)
+opentelemetry-sdk>=1.25.0
+opentelemetry-exporter-otlp-proto-http>=1.25.0
+# Langfuse: graph view for LangGraph + metrics dashboard (self-hostable)
+langfuse>=3.0.0
+# Phoenix / Arize: RAG chunk analysis + span view (single Docker container)
+arize-phoenix-otel>=0.7.0
+openinference-instrumentation-langchain>=0.3.0  # Auto-instruments LangChain/LangGraph

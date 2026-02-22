@@ -24,6 +24,21 @@ class Config:
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
     RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", "4"))
 
+    # MCP External Servers
+    BRAVE_API_KEY: str = os.getenv("BRAVE_API_KEY", "")
+    MCP_FILESYSTEM_PATH: str = os.getenv("MCP_FILESYSTEM_PATH", "./data")
+
+    # Observability (Langfuse + Phoenix)
+    OBSERVABILITY_ENABLED: bool = os.getenv("OBSERVABILITY_ENABLED", "false").lower() == "true"
+
+    # Langfuse (graph view + metrics dashboard)
+    LANGFUSE_PUBLIC_KEY: str = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+    LANGFUSE_SECRET_KEY: str = os.getenv("LANGFUSE_SECRET_KEY", "")
+    LANGFUSE_HOST: str = os.getenv("LANGFUSE_HOST", "http://localhost:3000")
+
+    # Phoenix / Arize (RAG + span analysis)
+    PHOENIX_ENDPOINT: str = os.getenv("PHOENIX_ENDPOINT", "http://localhost:6006")
+
     # Debug
     LANGGRAPH_DEBUG: bool = os.getenv("LANGGRAPH_DEBUG", "false").lower() == "true"
 
