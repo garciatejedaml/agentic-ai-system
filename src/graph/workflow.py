@@ -51,8 +51,13 @@ def run_query(query: str) -> dict:
     """
     Convenience wrapper: run a query through the full graph.
 
+    Automatically attaches the Langfuse callback handler when observability
+    is enabled, enabling the graph view in the Langfuse UI.
+
     Returns the final AgentState dict.
     """
+    from src.observability import get_langfuse_callback
+
     graph = get_graph()
     initial_state: AgentState = {
         "query": query,
@@ -62,4 +67,8 @@ def run_query(query: str) -> dict:
         "final_response": None,
         "error": None,
     }
-    return graph.invoke(initial_state)
+
+    langfuse_cb = get_langfuse_callback()
+    invoke_config = {"callbacks": [langfuse_cb]} if langfuse_cb else {}
+
+    return graph.invoke(initial_state, config=invoke_config)

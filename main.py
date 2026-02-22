@@ -19,6 +19,7 @@ from rich.panel import Panel
 from rich.markdown import Markdown
 
 from src.config import config
+from src.observability import setup_observability
 
 console = Console()
 
@@ -26,6 +27,7 @@ console = Console()
 def run_single(query: str) -> None:
     """Run one query and print the result."""
     config.validate()
+    setup_observability()
 
     from src.graph.workflow import run_query
 
@@ -49,6 +51,7 @@ def run_single(query: str) -> None:
 def interactive_mode() -> None:
     """Simple REPL for interactive testing."""
     config.validate()
+    setup_observability()
 
     console.print(
         Panel(
