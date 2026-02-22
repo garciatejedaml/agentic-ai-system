@@ -11,10 +11,19 @@ boto3>=1.35.0
 
 # Strands Agents (AWS multi-agent framework)
 strands-agents>=0.1.0
+litellm>=1.0.0          # Required by strands-agents LiteLLMModel
 # strands-agents-tools>=0.1.0  # Uncomment for built-in tools
 
 # MCP (Model Context Protocol) – required for external MCP server connections
 mcp>=1.0.0
+
+# AMPS (60East Technologies) – optional, required only when AMPS_ENABLED=true
+# Instalar desde el zip local: pip install amps/client/amps-python-client-*.zip
+# amps-python-client>=5.3.5  (no está en PyPI)
+
+# KDB+ historical analytics – optional, required only when KDB_ENABLED=true
+duckdb>=1.0.0              # POC mode backend (no license needed)
+# pykx>=2.5.0              # Server mode: pip install pykx (requires kx.com license)
 
 # RAG
 chromadb>=0.5.0
@@ -26,6 +35,10 @@ python-dotenv>=1.0.0
 pydantic>=2.0.0
 rich>=13.0.0                  # Pretty terminal output
 
+# API server (OpenAI-compatible endpoint for Continue.dev / any client)
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
 # Observability – Langfuse + Phoenix (both optional, enabled via OBSERVABILITY_ENABLED)
 # Shared OTEL exporter (sends traces to both backends simultaneously)
 opentelemetry-sdk>=1.25.0
@@ -33,5 +46,5 @@ opentelemetry-exporter-otlp-proto-http>=1.25.0
 # Langfuse: graph view for LangGraph + metrics dashboard (self-hostable)
 langfuse>=3.0.0
 # Phoenix / Arize: RAG chunk analysis + span view (single Docker container)
-arize-phoenix-otel>=0.7.0
-openinference-instrumentation-langchain>=0.3.0  # Auto-instruments LangChain/LangGraph
+# arize-phoenix-otel>=0.7.0  # No compatible con Python 3.14 aún
+# openinference-instrumentation-langchain>=0.3.0  # No compatible con Python 3.14 aún

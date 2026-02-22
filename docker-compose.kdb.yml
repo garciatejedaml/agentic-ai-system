@@ -1,0 +1,43 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# KDB+ Server stack – Bond RFQ historical data (POC)
+#
+# PREREQUISITE: KDB+ personal license + Linux x86_64 binary
+#   1. Register at https://kx.com/kdb-personal-edition-download/
+#   2. Download kc.lic (license) and linuxx86.zip (binary)
+#   3. Place both in docker/kdb/
+#
+# Usage:
+#   docker compose -f docker-compose.kdb.yml up -d         # start
+#   docker compose -f docker-compose.kdb.yml down          # stop
+#   docker compose -f docker-compose.kdb.yml logs -f kdb   # logs
+#
+# After startup, load synthetic data:
+#   python scripts/load_kdb_from_parquet.py
+#
+# Then in .env:
+#   KDB_ENABLED=true
+#   KDB_MODE=server
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: agentic-ai-kdb
+
+services:
+  kdb:
+    build:
+      context: ./docker/kdb
+      dockerfile: Dockerfile
+    container_name: kdb-server
+    restart: unless-stopped
+    ports:
+      - "5000:5000"           # KDB+ IPC port (PyKX / qpython client)
+    volumes:
+      - kdb_data:/opt/kx/data # Persist loaded table data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kx/q/l64/q -q -e 'exit 0'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  kdb_data:

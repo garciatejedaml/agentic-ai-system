@@ -7,6 +7,7 @@
 # After startup:
 #   Langfuse UI  → http://localhost:3000  (create account on first access)
 #   Phoenix UI   → http://localhost:6006
+#   MinIO UI     → http://localhost:9001  (user: minio / pass: miniopassword)
 #
 # Then in .env:
 #   OBSERVABILITY_ENABLED=true
@@ -67,6 +68,9 @@ services:
     volumes:
       - langfuse_ch_data:/var/lib/clickhouse
       - langfuse_ch_logs:/var/log/clickhouse-server
+      - ./docker/clickhouse/keeper.xml:/etc/clickhouse-server/config.d/keeper.xml:ro
+    ports:
+      - "9181:9181"   # ClickHouse Keeper
     healthcheck:
       test: ["CMD", "clickhouse-client", "--user", "langfuse", "--password", "langfuse", "--query", "SELECT 1"]
       interval: 10s
@@ -88,6 +92,46 @@ services:
     networks:
       - observability
 
+  # ── MinIO (S3-compatible local storage) ────────────────────────────────────
+  # Required by Langfuse worker for event uploads.
+  # UI: http://localhost:9001  (user: minio / pass: miniopassword)
+  langfuse-minio:
+    image: minio/minio:latest
+    container_name: langfuse-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniopassword
+    volumes:
+      - langfuse_minio:/data
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - observability
+
+  # Creates the required bucket on first startup
+  langfuse-minio-create-bucket:
+    image: minio/mc:latest
+    container_name: langfuse-minio-create-bucket
+    depends_on:
+      langfuse-minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://langfuse-minio:9000 minio miniopassword &&
+        mc mb --ignore-existing local/langfuse-events &&
+        echo 'Bucket langfuse-events ready.'
+      "
+    networks:
+      - observability
+
   # ── Langfuse – Application ─────────────────────────────────────────────────
   # UI + API: http://localhost:3000
   # OTEL ingest:  http://localhost:3000/api/public/otel/v1/traces
@@ -102,6 +146,8 @@ services:
       langfuse-clickhouse:
         condition: service_healthy
       langfuse-redis:
+        condition: service_healthy
+      langfuse-minio:
         condition: service_healthy
     ports:
       - "3000:3000"
@@ -120,6 +166,13 @@ services:
       ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
       TELEMETRY_ENABLED: "false"
+      # S3 / MinIO for event uploads
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-events
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniopassword
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
     networks:
       - observability
 
@@ -134,6 +187,8 @@ services:
         condition: service_healthy
       langfuse-redis:
         condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
       CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
@@ -147,6 +202,13 @@ services:
       SALT: "changeme-salt-string-32chars!!!!"
       ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
       TELEMETRY_ENABLED: "false"
+      # S3 / MinIO for event uploads
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-events
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniopassword
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
     networks:
       - observability
 
@@ -155,6 +217,7 @@ volumes:
   langfuse_db:
   langfuse_ch_data:
   langfuse_ch_logs:
+  langfuse_minio:
 
 networks:
   observability:

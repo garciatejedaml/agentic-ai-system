@@ -158,13 +158,10 @@ def get_langfuse_callback():
         return None
 
     try:
-        from langfuse.callback import CallbackHandler
+        from langfuse.langchain import CallbackHandler
 
-        return CallbackHandler(
-            public_key=config.LANGFUSE_PUBLIC_KEY,
-            secret_key=config.LANGFUSE_SECRET_KEY,
-            host=config.LANGFUSE_HOST,
-        )
+        # Langfuse v3 reads LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST from env
+        return CallbackHandler()
     except ImportError:
         logger.warning(
             "[observability] langfuse package not installed – "
