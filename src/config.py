@@ -12,6 +12,8 @@ class Config:
     # Anthropic (local)
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+    # Fast/cheap model for sub-agents (KDB, AMPS) that mostly call tools
+    ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
 
     # Bedrock (AWS)
     AWS_REGION: str = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
@@ -27,6 +29,20 @@ class Config:
     # MCP External Servers
     BRAVE_API_KEY: str = os.getenv("BRAVE_API_KEY", "")
     MCP_FILESYSTEM_PATH: str = os.getenv("MCP_FILESYSTEM_PATH", "./data")
+
+    # AMPS (60East Technologies pub/sub)
+    AMPS_ENABLED: bool = os.getenv("AMPS_ENABLED", "false").lower() == "true"
+    AMPS_HOST: str = os.getenv("AMPS_HOST", "localhost")
+    AMPS_PORT: int = int(os.getenv("AMPS_PORT", "9007"))
+    AMPS_ADMIN_PORT: int = int(os.getenv("AMPS_ADMIN_PORT", "8085"))
+    AMPS_CLIENT_NAME: str = os.getenv("AMPS_CLIENT_NAME", "agentic-ai-system")
+
+    # KDB+ historical data store
+    KDB_ENABLED: bool = os.getenv("KDB_ENABLED", "false").lower() == "true"
+    KDB_MODE: str = os.getenv("KDB_MODE", "poc")         # "poc" | "server"
+    KDB_DATA_PATH: str = os.getenv("KDB_DATA_PATH", "./data/kdb")   # poc mode
+    KDB_HOST: str = os.getenv("KDB_HOST", "localhost")   # server mode
+    KDB_PORT: int = int(os.getenv("KDB_PORT", "5000"))   # server mode
 
     # Observability (Langfuse + Phoenix)
     OBSERVABILITY_ENABLED: bool = os.getenv("OBSERVABILITY_ENABLED", "false").lower() == "true"
