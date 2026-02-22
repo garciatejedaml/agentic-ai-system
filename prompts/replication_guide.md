@@ -181,7 +181,8 @@ agentic-ai-system/
 │   ├── generate_synthetic_rfq.py    ← Creates bond_rfq.parquet (synthetic data)
 │   ├── ingest_docs.py               ← Ingest general docs to ChromaDB
 │   ├── ingest_amps_docs.py          ← Ingest AMPS-specific docs to ChromaDB
-│   └── amps_publisher.py            ← AMPS live data simulator (seed + tick modes)
+│   ├── amps_publisher.py            ← AMPS live data simulator (seed + tick modes)
+│   └── test_amps_realtime.py        ← Canary test: proves live data flows from AMPS SOW
 │
 ├── data/
 │   ├── kdb/bond_rfq.parquet         ← Synthetic Bond RFQ historical data
@@ -201,19 +202,19 @@ agentic-ai-system/
 ├── docker-compose.observability.yml ← Langfuse + Phoenix + ClickHouse + Postgres
 │
 ├── infra/                           ← Terraform (AWS)
-│   ├── main.tf                      ← AWS provider + S3 backend (comentado)
-│   ├── variables.tf                 ← Input variables con defaults
-│   ├── locals.tf                    ← Computed values (name_prefix, Bedrock IDs)
+│   ├── main.tf                      ← AWS provider + S3 backend (commented out, ready to activate)
+│   ├── variables.tf                 ← Input variables with defaults
+│   ├── locals.tf                    ← Computed values (name_prefix, Bedrock model IDs)
 │   ├── outputs.tf                   ← ALB DNS, ECR URL, cluster name, etc.
-│   ├── networking.tf                ← VPC, 3 subnet tiers, NAT, security groups
-│   ├── vpc_endpoints.tf             ← VPC Endpoints: Bedrock, ECR, SQS, S3, CW
-│   ├── ecr.tf                       ← ECR repo + lifecycle policy
-│   ├── iam.tf                       ← Task role (Bedrock+SQS+DynamoDB) + Execution role
-│   ├── data.tf                      ← Aurora pgvector, DynamoDB, SQS, Secrets Manager
-│   ├── ecs.tf                       ← ECS cluster, task def, Fargate service
-│   ├── alb.tf                       ← ALB, target group, listener
-│   ├── autoscaling.tf               ← Auto-scaling CPU/memoria (1–4 tasks)
-│   └── terraform.tfvars.example     ← Template de variables
+│   ├── networking.tf                ← VPC, 3 subnet tiers, NAT Gateway, security groups
+│   ├── vpc_endpoints.tf             ← VPC Endpoints: Bedrock, ECR×2, SQS, Secrets, CW, S3
+│   ├── ecr.tf                       ← ECR repository + lifecycle policy
+│   ├── iam.tf                       ← Task role (Bedrock + SQS + DynamoDB) + Execution role
+│   ├── data.tf                      ← Aurora pgvector, DynamoDB registry, SQS + DLQ, Secrets Manager
+│   ├── ecs.tf                       ← ECS cluster, task definition, Fargate service
+│   ├── alb.tf                       ← ALB, target group, HTTP listener
+│   ├── autoscaling.tf               ← Auto-scaling by CPU/memory (1–4 tasks)
+│   └── terraform.tfvars.example     ← Variable template — copy to terraform.tfvars
 │
 └── tests/
     ├── test_graph.py                ← LangGraph node tests
@@ -312,7 +313,22 @@ python scripts/ingest_amps_docs.py  # AMPS-specific docs (concepts, tools, confi
 
 ChromaDB persists to `.chroma_db/` locally or `/data/chroma_db` in Docker.
 
-### 4.6 Start optional services
+### 4.6 Run the AMPS real-time canary test
+
+After starting AMPS and seeding data, verify the live data flow end-to-end:
+
+```bash
+python scripts/test_amps_realtime.py          # concise output
+python scripts/test_amps_realtime.py --verbose # shows full agent responses
+```
+
+The test publishes a position with `PnL = 7,777,777.77` (a value impossible in real
+financial data), queries the AMPS agent, and asserts that exact value appears in the
+response — proving the system reads from AMPS SOW and not from KDB or any cache.
+It then updates the record to `PnL = 9,999,999.99` and re-queries to confirm live
+SOW updates are reflected. Exit code 0 = all pass, exit code 1 = failure.
+
+### 4.7 Start optional services
 
 ```bash
 # AMPS pub/sub server (requires docker/amps/AMPS.tar — download from crankuptheamps.com/evaluate)
@@ -697,3 +713,54 @@ In `src/config.py`:
 
 In AWS, `get_strands_fast_model()` always uses the Haiku Bedrock ID hardcoded in
 `model_factory.py` (no separate `BEDROCK_FAST_MODEL` config var needed currently).
+
+---
+
+## 13. Verifying real-time AMPS data flow
+
+### The canary test technique
+
+File: `scripts/test_amps_realtime.py`
+
+The script proves end-to-end that the system reads **live data from AMPS SOW**
+and not from KDB historical data or any cache layer:
+
+```
+Step 1 — Publish position with PnL = 7,777,777.77  (impossible in real financial data)
+Step 2 — Query AMPS agent: "What is the current PnL for T_HY_001 on US345370CY87?"
+Step 3 — Assert: 7,777,777.77 appears in the response  →  PASS = data came from AMPS
+Step 4 — Update same SOW key: PnL = 9,999,999.99
+Step 5 — Re-query and assert: 9,999,999.99 appears, 7,777,777.77 is gone
+         →  PASS = SOW is truly state-of-world, live updates reflected instantly
+Step 6 — Cleanup: zero out the canary record
+```
+
+```bash
+# Run (requires AMPS_ENABLED=true and AMPS container running)
+python scripts/test_amps_realtime.py
+python scripts/test_amps_realtime.py --verbose   # full agent responses
+
+# Expected output:
+#   [PASS] V1 canary present in live data: canary value 7,777,777.77 found in response.
+#   [PASS] V2 canary present after live update: canary value 9,999,999.99 found in response.
+#   [PASS] Old canary value 7,777,777.77 no longer in response (SOW replaced).
+#   RESULT: ALL TESTS PASSED ✓
+```
+
+### Why canary values work
+
+KDB synthetic data uses realistic PnL values (±$50K maximum). A value like
+`7,777,777.77` is structurally impossible in the dataset. If the agent returns
+it, the data can only have come from AMPS. This eliminates any ambiguity about
+data source even if both systems have records for the same trader/ISIN.
+
+The `float` TypeError fix: the `in` operator requires string on the left side
+when checking membership in a string. Always format the float first:
+```python
+# Correct
+canary_str = f"{CANARY_PNL_V1:,.2f}".replace(",", "")
+ok = canary_str not in response.replace(",", "")
+
+# Wrong — raises TypeError
+ok = CANARY_PNL_V1 not in response
+```

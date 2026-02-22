@@ -205,7 +205,8 @@ def run_test(verbose: bool = False) -> bool:
         response_v2 = _query_agent(query_v2, verbose)
 
         ok_v2 = _check(response_v2, CANARY_PNL_V2, "V2 canary present after live update")
-        ok_old = CANARY_PNL_V1 not in response_v2.replace(",", "")
+        canary_v1_str = f"{CANARY_PNL_V1:,.2f}".replace(",", "")
+        ok_old = canary_v1_str not in response_v2.replace(",", "")
         if ok_old:
             print(f"  [PASS] Old canary value {CANARY_PNL_V1:,.2f} no longer in response (SOW replaced).")
         else:

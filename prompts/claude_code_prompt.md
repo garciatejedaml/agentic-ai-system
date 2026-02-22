@@ -45,11 +45,12 @@ Build in this order:
 16. `scripts/generate_synthetic_rfq.py` — Bond RFQ parquet generator
 17. `scripts/ingest_docs.py` + `ingest_amps_docs.py` — RAG ingestion
 18. `scripts/amps_publisher.py` — AMPS live data simulator
-19. `main.py` — CLI entry point
-20. `Dockerfile` + `docker/entrypoint.sh` — Production container
-21. `docker-compose.*.yml` — AMPS, KDB, observability services
-22. `infra/` — Terraform: main.tf, variables.tf, locals.tf, outputs.tf, networking.tf, vpc_endpoints.tf, ecr.tf, iam.tf, data.tf, ecs.tf, alb.tf, autoscaling.tf, terraform.tfvars.example
-23. `.env.example`, `requirements.txt`, `.gitignore`
+19. `scripts/test_amps_realtime.py` — Canary test (proves live data from AMPS SOW)
+20. `main.py` — CLI entry point
+21. `Dockerfile` + `docker/entrypoint.sh` — Production container
+22. `docker-compose.*.yml` — AMPS, KDB, observability services
+23. `infra/` — Terraform: main.tf, variables.tf, locals.tf, outputs.tf, networking.tf, vpc_endpoints.tf, ecr.tf, iam.tf, data.tf, ecs.tf, alb.tf, autoscaling.tf, terraform.tfvars.example
+24. `.env.example`, `requirements.txt`, `.gitignore`
 
 ## Critical constraints
 
@@ -78,3 +79,13 @@ Bonds (12 ISINs):
 
 AMPS topics: `positions` (key: /id), `orders` (key: /order_id), `market-data` (key: /symbol)
 AMPS ports: 8085 (HTTP admin, /amps.json), 9007 (TCP JSON transport)
+
+## Testing real-time AMPS data
+
+After building, verify live data flow with the canary test:
+```bash
+python scripts/test_amps_realtime.py
+```
+This publishes PnL=7,777,777.77 to AMPS SOW, queries the agent, and asserts
+that exact value appears — proving data came from AMPS, not KDB. See section 13
+of `replication_guide.md` for details.

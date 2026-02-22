@@ -1,81 +1,82 @@
 # AWS Infrastructure — Agentic AI System
 
-Terraform para deployar el sistema en AWS usando **ECS Fargate** + **Amazon Bedrock**.
+Terraform configuration to deploy the full system to AWS using **ECS Fargate** + **Amazon Bedrock**.
 
-## Arquitectura
+## Architecture
 
 ```
 Internet
    │
    ▼
 ┌─────────────────────────────────────────────────────────┐
-│  ALB (port 80 → 443 cuando se agrega cert ACM)         │
-│  POST /v1/chat/completions  (compatible OpenAI)         │
+│  ALB (port 80 → 443 when ACM certificate is added)      │
+│  POST /v1/chat/completions  (OpenAI-compatible)         │
 └──────────────────────────┬──────────────────────────────┘
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────┐
 │  ECS Fargate — agentic-ai-api  (private subnet)         │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │  LangGraph workflow (control plane)              │   │
+│  │  LangGraph workflow (deterministic control plane) │   │
 │  │  Strands Financial Orchestrator (data plane)     │   │
-│  │  MCP servers como subprocesos (stdio)            │   │
+│  │  MCP servers as subprocesses (stdio)             │   │
 │  └─────────────────────────────────────────────────┘   │
 └───────────────┬─────────────────────────────────────────┘
-                │ IAM auth (no API keys)
+                │ IAM auth — no API keys needed
                 ▼
          Amazon Bedrock
          (Claude Sonnet + Haiku)
 ```
 
-## Archivos Terraform
+## Terraform files
 
-| Archivo | Recursos |
-|---------|---------|
-| `main.tf` | Provider AWS, backend S3 (comentado) |
-| `variables.tf` | Todas las variables de input |
-| `locals.tf` | Valores computados (name_prefix, model IDs) |
-| `outputs.tf` | Outputs (ALB DNS, ECR URL, etc.) |
-| `networking.tf` | VPC, subnets public/private/isolated, NAT, security groups |
-| `vpc_endpoints.tf` | VPC Endpoints para Bedrock, ECR, SQS, Secrets Manager, CloudWatch, S3 |
-| `ecr.tf` | Repositorio ECR con lifecycle policy |
-| `iam.tf` | Task role (Bedrock + SQS + DynamoDB) + Execution role |
-| `data.tf` | Aurora Serverless v2 (pgvector), DynamoDB, SQS, Secrets Manager |
-| `ecs.tf` | ECS Cluster, Task Definition, Fargate Service |
-| `alb.tf` | Application Load Balancer, Target Group, Listener |
-| `autoscaling.tf` | Auto-scaling por CPU y memoria (1–4 tasks) |
+| File | Resources |
+|------|-----------|
+| `main.tf` | AWS + random providers, S3 backend (commented out, ready to activate) |
+| `variables.tf` | All input variables with sensible defaults |
+| `locals.tf` | Computed values: name_prefix, Bedrock model IDs, ECR image URI |
+| `outputs.tf` | ALB DNS, ECR URL, cluster name, secret ARN, Aurora endpoint |
+| `networking.tf` | VPC, 3 subnet tiers (public/private/isolated), NAT Gateway, security groups |
+| `vpc_endpoints.tf` | VPC Endpoints: Bedrock, ECR×2, Secrets Manager, CloudWatch Logs, SQS + S3 gateway |
+| `ecr.tf` | ECR repository with lifecycle policy (keep 5 tagged releases) |
+| `iam.tf` | Task role (Bedrock + SQS + DynamoDB) + ECS Execution role |
+| `data.tf` | Aurora Serverless v2 (pgvector), DynamoDB agent registry, SQS + DLQ, Secrets Manager |
+| `ecs.tf` | ECS cluster, Fargate task definition, service, CloudWatch log group |
+| `alb.tf` | Application Load Balancer, target group, HTTP listener (HTTPS stub commented out) |
+| `autoscaling.tf` | Auto-scaling by CPU and memory utilization (1–4 tasks) |
+| `terraform.tfvars.example` | Variable template — copy to `terraform.tfvars` before deploying |
 
-## Prerequisitos
+## Prerequisites
 
 ```bash
 # Terraform 1.5+
 terraform --version
 
-# AWS CLI configurado
+# AWS CLI configured
 aws configure
-aws sts get-caller-identity  # verificar acceso
+aws sts get-caller-identity   # verify credentials
 
-# Docker (para build y push de imagen)
+# Docker (for image build and push)
 docker --version
 ```
 
-## Deploy paso a paso
+## Step-by-step deployment
 
-### 1. Preparar variables
+### 1. Set variables
 
 ```bash
 cd infra
 cp terraform.tfvars.example terraform.tfvars
-# Editar terraform.tfvars con tus valores
+# Edit terraform.tfvars with your values
 ```
 
-### 2. (Opcional) Configurar remote state
+### 2. (Optional) Configure remote state
 
 ```bash
-# Crear S3 bucket para state
+# Create S3 bucket for state storage
 aws s3 mb s3://my-tf-state-bucket --region us-east-1
 
-# Crear tabla DynamoDB para locks
+# Create DynamoDB table for state locking
 aws dynamodb create-table \
   --table-name terraform-state-lock \
   --attribute-definitions AttributeName=LockID,AttributeType=S \
@@ -83,52 +84,54 @@ aws dynamodb create-table \
   --billing-mode PAY_PER_REQUEST \
   --region us-east-1
 
-# Descomentar el bloque backend "s3" en main.tf y completar con los valores
+# Uncomment the backend "s3" block in main.tf and fill in bucket/key/region
 ```
 
-### 3. Init y plan
+### 3. Init and plan
 
 ```bash
 terraform init
 terraform plan -out=tfplan
-# Revisar el plan antes de aplicar
+# Review the plan before applying
 ```
 
-### 4. Crear infraestructura (sin imagen aún)
+### 4. Create infrastructure (without image)
 
 ```bash
 terraform apply tfplan
 ```
 
-Esto crea todo excepto el ECS service con imagen real (usará `latest` por ahora).
+This provisions all resources. The ECS service will start with `image_tag=latest`
+and fail its health check until a real image is pushed in the next step.
 
-### 5. Build y push de la imagen Docker
+### 5. Build and push the Docker image
+
+Run from the **project root** (not `infra/`):
 
 ```bash
-# Obtener el ECR URL del output
-ECR_URL=$(terraform output -raw ecr_api_repository_url)
+# Get ECR URL from outputs
+ECR_URL=$(terraform -chdir=infra output -raw ecr_api_repository_url)
 IMAGE_TAG=$(git rev-parse --short HEAD)
 
-# Login a ECR
+# Login to ECR
 aws ecr get-login-password --region us-east-1 | \
   docker login --username AWS --password-stdin ${ECR_URL%/*}
 
-# Build desde la raíz del proyecto
-cd ..
+# Build and push
 docker build -t ${ECR_URL}:${IMAGE_TAG} .
-docker tag ${ECR_URL}:${IMAGE_TAG} ${ECR_URL}:latest
+docker tag  ${ECR_URL}:${IMAGE_TAG} ${ECR_URL}:latest
 docker push ${ECR_URL}:${IMAGE_TAG}
 docker push ${ECR_URL}:latest
-cd infra
 ```
 
-### 6. Re-deploy con la imagen correcta
+### 6. Redeploy with the correct image tag
 
 ```bash
+cd infra
 TF_VAR_image_tag=${IMAGE_TAG} terraform apply -auto-approve
 ```
 
-### 7. Cargar secrets
+### 7. Populate secrets
 
 ```bash
 SECRET_ARN=$(terraform output -raw app_secret_arn)
@@ -143,7 +146,7 @@ aws secretsmanager put-secret-value \
   }'
 ```
 
-### 8. Forzar re-deploy del ECS service para que levante los secrets
+### 8. Force ECS redeployment to pick up the new secrets
 
 ```bash
 CLUSTER=$(terraform output -raw ecs_cluster_name)
@@ -155,7 +158,7 @@ aws ecs update-service \
   --force-new-deployment
 ```
 
-### 9. Verificar
+### 9. Verify
 
 ```bash
 ALB=$(terraform output -raw alb_dns_name)
@@ -169,43 +172,43 @@ curl -s http://${ALB}/v1/chat/completions \
   -d '{"messages":[{"role":"user","content":"Who are the top HY traders?"}]}'
 ```
 
-## Habilitar pgvector en Aurora (una sola vez)
+## Enable pgvector on Aurora (one-time setup)
 
 ```bash
-# Obtener credenciales de Aurora
+# Retrieve Aurora credentials
 aws secretsmanager get-secret-value \
   --secret-id /agentic-ai-staging/aurora/credentials \
   --query SecretString --output text | jq .
 
-# Conectar y habilitar extensión
+# Connect and enable extension
 psql -h $(terraform output -raw aurora_endpoint) \
      -U agenticai -d agenticai \
      -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
-## Estimación de costos (staging, 1 task 24/7)
+## Cost estimate (staging, 1 task running 24/7)
 
-| Recurso | $/mes aprox |
-|---------|------------|
+| Resource | $/month (approx) |
+|----------|-----------------|
 | ECS Fargate (1 vCPU, 2 GB) | ~$30 |
 | ALB | ~$20 |
 | NAT Gateway | ~$35 |
-| VPC Endpoints (7 interface) | ~$50 |
+| VPC Interface Endpoints (6) | ~$50 |
 | Aurora Serverless v2 (0.5 ACU, auto-pauses) | ~$5–15 |
 | CloudWatch Logs | ~$2 |
 | **Total** | **~$140–155** |
 
-> Para reducir costos en staging: comentar los VPC endpoints en `vpc_endpoints.tf`
-> (el tráfico irá por NAT, ~$35/mes extra pero sin el costo fijo de endpoints),
-> poner `desired_count = 0` cuando no se usa, y activar `auto_pause` en Aurora.
+> To reduce costs in staging: comment out the VPC endpoints in `vpc_endpoints.tf`
+> (traffic will go through NAT instead — ~$35/month extra but no fixed endpoint cost),
+> set `desired_count = 0` when not in use, and allow Aurora auto-pause.
 
-## Destruir la infraestructura
+## Destroy infrastructure
 
 ```bash
-# CUIDADO: esto destruye TODO incluyendo la base de datos
+# WARNING: destroys everything including the database
 terraform destroy
 
-# Si Aurora tiene deletion_protection=true, primero:
+# If Aurora has deletion_protection=true, disable it first:
 terraform apply -var="aurora_deletion_protection=false"
 terraform destroy
 ```
@@ -223,7 +226,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # for OIDC auth
+      id-token: write   # OIDC auth
       contents: read
 
     steps:
@@ -254,3 +257,13 @@ jobs:
           terraform init
           terraform apply -auto-approve
 ```
+
+## Phase 2 — Multi-tenant agent platform
+
+See `prompts/replication_guide.md` section 7 for the full architecture.
+
+Key changes needed:
+1. Extract each Strands agent to its own ECS service
+2. Switch MCP clients from `stdio` to `http+sse` transport
+3. Add an SQS consumer per agent service for async job dispatch
+4. Use the DynamoDB Agent Registry for dynamic agent discovery
