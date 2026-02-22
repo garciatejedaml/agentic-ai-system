@@ -24,6 +24,10 @@ _FINANCIAL_KEYWORDS = {
     "bond", "rfq", "trader", "trading", "desk", "hy", "ig", "em", "rates",
     "spread", "bps", "basis point", "hit rate", "notional", "yield", "coupon",
     "isin", "cusip", "position", "order",
+    # Live / real-time data
+    "live", "real-time", "realtime", "current price", "market data", "market-data",
+    "bid", "ask", "mid price", "quote", "pnl", "mark to market", "mtm",
+    "intraday", "today", "right now", "current position",
     # AMPS specific
     "amps", "sow", "subscribe", "pub/sub", "topic", "publish", "state of world",
     # Data sources
