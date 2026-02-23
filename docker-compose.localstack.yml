@@ -1,0 +1,29 @@
+services:
+
+  # ── LocalStack — AWS services emulator ──────────────────────────────────────
+  # Community (free): SQS, DynamoDB, S3, Secrets Manager, CloudWatch Logs, ECR
+  # Endpoint: http://localhost:4566  (all services on the same port)
+  localstack:
+    image: localstack/localstack:3.4
+    container_name: localstack
+    ports:
+      - "4566:4566"         # main endpoint (all services)
+      - "4510-4559:4510-4559"  # range for internal services
+    environment:
+      - SERVICES=sqs,dynamodb,secretsmanager,s3,logs,ecr
+      - DEBUG=0
+      - DATA_DIR=/var/lib/localstack/data   # persist state across restarts
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/localstack_init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  localstack_data:

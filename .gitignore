@@ -84,3 +84,5 @@ htmlcov/
 terraform.tfvars
 infra/.terraform/
 cdk.out/
+# LocalStack data (if using host-mounted volume instead of named volume)
+.localstack/
