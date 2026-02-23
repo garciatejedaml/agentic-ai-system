@@ -14,7 +14,10 @@ set -e
 
 ENDPOINT="http://localhost:4566"
 REGION="us-east-1"
-AWS="aws --endpoint-url=${ENDPOINT} --region=${REGION} --no-cli-pager"
+export AWS_PAGER=""              # disable pager on CLI v1 and v2
+export AWS_ACCESS_KEY_ID=test    # LocalStack accepts any non-empty value
+export AWS_SECRET_ACCESS_KEY=test
+AWS="aws --endpoint-url=${ENDPOINT} --region=${REGION}"
 
 echo "[localstack-init] Creating AWS resources..."
 

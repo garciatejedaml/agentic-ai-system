@@ -14,6 +14,10 @@ services:
       - DEBUG=0
       - DATA_DIR=/var/lib/localstack/data   # persist state across restarts
       - DOCKER_HOST=unix:///var/run/docker.sock
+      # Fake credentials — LocalStack accepts any non-empty value
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
     volumes:
       - localstack_data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
