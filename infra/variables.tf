@@ -118,3 +118,29 @@ variable "aurora_deletion_protection" {
   type        = bool
   default     = false # set true for production
 }
+
+# ── Phase 2: A2A Agent settings ───────────────────────────────────────────────
+
+variable "amps_host" {
+  description = "Hostname of the AMPS server reachable from ECS tasks"
+  type        = string
+  default     = "localhost"
+}
+
+variable "amps_tcp_port" {
+  description = "TCP port of the AMPS server (JSON transport)"
+  type        = number
+  default     = 9007
+}
+
+variable "log_level" {
+  description = "Application log level (INFO | DEBUG | WARNING)"
+  type        = string
+  default     = "INFO"
+}
+
+variable "skip_ingest" {
+  description = "Skip RAG doc ingestion on startup (true for faster deploys when data already ingested)"
+  type        = string
+  default     = "false"
+}

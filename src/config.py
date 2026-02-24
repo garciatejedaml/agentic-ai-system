@@ -55,6 +55,14 @@ class Config:
     # Phoenix / Arize (RAG + span analysis)
     PHOENIX_ENDPOINT: str = os.getenv("PHOENIX_ENDPOINT", "http://localhost:6006")
 
+    # A2A (Agent-to-Agent, Phase 2)
+    # Set AWS_ENDPOINT_URL=http://localstack:4566 for local dev (empty = real AWS)
+    DYNAMODB_ENDPOINT: str = os.getenv("AWS_ENDPOINT_URL", "")
+    KDB_AGENT_URL: str = os.getenv("KDB_AGENT_URL", "http://localhost:8001")
+    AMPS_AGENT_URL: str = os.getenv("AMPS_AGENT_URL", "http://localhost:8002")
+    FINANCIAL_ORCHESTRATOR_URL: str = os.getenv("FINANCIAL_ORCHESTRATOR_URL", "http://localhost:8003")
+    A2A_TIMEOUT: int = int(os.getenv("A2A_TIMEOUT", "120"))
+
     # Debug
     LANGGRAPH_DEBUG: bool = os.getenv("LANGGRAPH_DEBUG", "false").lower() == "true"
 

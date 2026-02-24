@@ -1,0 +1,166 @@
+# ── Phase 2: A2A Multi-Agent Docker Compose ───────────────────────────────────
+#
+# Runs each Strands agent as an independent HTTP service.
+# All containers share the same image — AGENT_SERVICE picks the role.
+# LocalStack emulates DynamoDB for agent discovery (no real AWS needed).
+#
+# Services:
+#   localstack            :4566   AWS emulation (DynamoDB agent-registry)
+#   kdb-agent             :8001   KDB Historical Data Agent (A2A endpoint)
+#   amps-agent            :8002   AMPS Real-Time Agent (A2A endpoint)
+#   financial-orchestrator :8003   Financial Orchestrator (calls KDB + AMPS via A2A)
+#   api-service           :8000   FastAPI + LangGraph gateway (user-facing)
+#
+# Usage:
+#   docker build -t agentic-ai-system:phase2 .
+#   docker compose -f docker-compose.phase2.yml up -d
+#
+# Verify:
+#   curl http://localhost:8001/.well-known/agent.json
+#   curl http://localhost:8000/v1/chat/completions -d '{"messages":[{"role":"user","content":"Top HY traders?"}]}'
+
+name: agentic-ai-phase2
+
+x-common-env: &common-env
+  LLM_PROVIDER: anthropic
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+  ANTHROPIC_FAST_MODEL: ${ANTHROPIC_FAST_MODEL:-claude-haiku-4-5}
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_ENDPOINT_URL: http://localstack:4566
+  AGENT_REGISTRY_TABLE: agentic-ai-staging-agent-registry
+  KDB_ENABLED: "true"
+  KDB_MODE: poc
+  KDB_DATA_PATH: /app/data/kdb
+  AMPS_ENABLED: "false"
+
+x-agent-base: &agent-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  entrypoint: ["/phase2_entrypoint.sh"]
+  restart: unless-stopped
+  depends_on:
+    localstack:
+      condition: service_healthy
+
+services:
+
+  # ── LocalStack — AWS DynamoDB emulation ──────────────────────────────────────
+  localstack:
+    image: localstack/localstack:3.4
+    container_name: localstack-phase2
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs,dynamodb,secretsmanager,s3,logs,ecr
+      - DEBUG=0
+      - DATA_DIR=/var/lib/localstack/data
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - localstack_phase2_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/localstack_init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ── KDB Agent — Historical Bond RFQ Analytics ────────────────────────────────
+  kdb-agent:
+    <<: *agent-base
+    container_name: kdb-agent
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: kdb
+      AGENT_PORT: "8001"
+      KDB_AGENT_ENDPOINT: http://kdb-agent:8001
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── AMPS Agent — Real-Time Market Data ───────────────────────────────────────
+  amps-agent:
+    <<: *agent-base
+    container_name: amps-agent
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: amps
+      AGENT_PORT: "8002"
+      AMPS_AGENT_ENDPOINT: http://amps-agent:8002
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Financial Orchestrator — Multi-Source Coordinator ────────────────────────
+  financial-orchestrator:
+    <<: *agent-base
+    container_name: financial-orchestrator
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: financial_orchestrator
+      AGENT_PORT: "8003"
+      FINANCIAL_ORCHESTRATOR_ENDPOINT: http://financial-orchestrator:8003
+      KDB_AGENT_URL: http://kdb-agent:8001
+      AMPS_AGENT_URL: http://amps-agent:8002
+    ports:
+      - "8003:8003"
+    depends_on:
+      localstack:
+        condition: service_healthy
+      kdb-agent:
+        condition: service_healthy
+      amps-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── API Service — User-Facing FastAPI + LangGraph ────────────────────────────
+  api-service:
+    <<: *agent-base
+    container_name: api-service-phase2
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: api
+      FINANCIAL_ORCHESTRATOR_URL: http://financial-orchestrator:8003
+      CHROMA_PERSIST_DIR: /data/chroma_db
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_phase2_data:/data/chroma_db
+    depends_on:
+      localstack:
+        condition: service_healthy
+      financial-orchestrator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  localstack_phase2_data:
+  chroma_phase2_data:

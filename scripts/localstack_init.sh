@@ -97,12 +97,59 @@ $AWS logs create-log-group \
 
 echo "[localstack-init] CloudWatch Logs: /agentic-ai/staging/api created"
 
+# ── Phase 2: Pre-register A2A agents in DynamoDB ──────────────────────────────
+# Seeds the registry so the Financial Orchestrator can discover agents
+# before containers have fully started (avoids cold-start race condition).
+# Each container overwrites its entry with live status on startup.
+
+TTL=$(( $(date +%s) + 3600 ))
+
+$AWS dynamodb put-item \
+  --table-name agentic-ai-staging-agent-registry \
+  --item "{
+    \"agent_id\":     {\"S\": \"kdb-agent\"},
+    \"desk_name\":    {\"S\": \"HY\"},
+    \"endpoint\":     {\"S\": \"http://kdb-agent:8001\"},
+    \"capabilities\": {\"SS\": [\"bond_analytics\", \"trader_performance\", \"rfq_history\"]},
+    \"status\":       {\"S\": \"registered\"},
+    \"ttl\":          {\"N\": \"${TTL}\"}
+  }" > /dev/null
+
+$AWS dynamodb put-item \
+  --table-name agentic-ai-staging-agent-registry \
+  --item "{
+    \"agent_id\":     {\"S\": \"amps-agent\"},
+    \"desk_name\":    {\"S\": \"HY\"},
+    \"endpoint\":     {\"S\": \"http://amps-agent:8002\"},
+    \"capabilities\": {\"SS\": [\"realtime_positions\", \"live_orders\", \"market_data\"]},
+    \"status\":       {\"S\": \"registered\"},
+    \"ttl\":          {\"N\": \"${TTL}\"}
+  }" > /dev/null
+
+$AWS dynamodb put-item \
+  --table-name agentic-ai-staging-agent-registry \
+  --item "{
+    \"agent_id\":     {\"S\": \"financial-orchestrator\"},
+    \"desk_name\":    {\"S\": \"HY\"},
+    \"endpoint\":     {\"S\": \"http://financial-orchestrator:8003\"},
+    \"capabilities\": {\"SS\": [\"financial_analysis\", \"bond_trading\", \"multi_source\"]},
+    \"status\":       {\"S\": \"registered\"},
+    \"ttl\":          {\"N\": \"${TTL}\"}
+  }" > /dev/null
+
+echo "[localstack-init] DynamoDB: 3 A2A agents pre-registered in agent-registry"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 echo ""
 echo "[localstack-init] ✓ All resources created. Endpoints:"
-echo "  SQS:     ${ENDPOINT}/000000000000/agentic-ai-staging-jobs"
+echo "  SQS:      ${ENDPOINT}/000000000000/agentic-ai-staging-jobs"
 echo "  DynamoDB: ${ENDPOINT} (table: agentic-ai-staging-agent-registry)"
 echo "  Secrets:  ${ENDPOINT} (secret: /agentic-ai-staging/app/secrets)"
 echo "  S3:       ${ENDPOINT}/agentic-ai-terraform-state"
+echo ""
+echo "  A2A Agents pre-registered:"
+echo "    kdb-agent              → http://kdb-agent:8001"
+echo "    amps-agent             → http://amps-agent:8002"
+echo "    financial-orchestrator → http://financial-orchestrator:8003"
 echo ""

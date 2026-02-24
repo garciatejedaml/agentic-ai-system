@@ -70,8 +70,14 @@ def run_strands_orchestrator(query: str, rag_context: list[dict]) -> Orchestrato
 # ── Financial pipeline ────────────────────────────────────────────────────────
 
 def _run_financial(query: str, rag_context: list[dict]) -> OrchestratorResult:
-    """Route to the Financial Orchestrator (KDB + AMPS + RAG)."""
-    from src.agents.financial_orchestrator import run_financial_orchestrator
+    """Route to the Financial Orchestrator (KDB + AMPS + RAG).
+
+    Phase 2: calls the Financial Orchestrator via A2A HTTP if
+    FINANCIAL_ORCHESTRATOR_URL is set to a remote service.
+    Falls back to in-process call (Phase 1 behavior) when running
+    the monolith (AGENT_SERVICE not set or AGENT_SERVICE=api).
+    """
+    import os
     from src.agents.synthesizer import create_synthesizer
 
     rag_text = ""
@@ -79,7 +85,22 @@ def _run_financial(query: str, rag_context: list[dict]) -> OrchestratorResult:
         rag_text = "\n\n".join(f"[{i+1}] {doc['text']}" for i, doc in enumerate(rag_context))
 
     print(f"[Orchestrator] Route → Financial (KDB + AMPS + RAG)")
-    research_text = run_financial_orchestrator(query, rag_context=rag_text)
+
+    # Phase 2: delegate to Financial Orchestrator service via A2A HTTP
+    agent_service = os.getenv("AGENT_SERVICE", "")
+    fin_url = os.getenv("FINANCIAL_ORCHESTRATOR_URL", "")
+    if agent_service == "api" and fin_url:
+        from src.a2a.client import call_agent_sync
+        from src.a2a.registry import get_endpoint
+        endpoint = get_endpoint("financial-orchestrator", fin_url)
+        full_query = query
+        if rag_text:
+            full_query = f"{query}\n\n[Pre-retrieved knowledge base context]\n{rag_text}"
+        research_text = call_agent_sync(endpoint, full_query)
+    else:
+        # Phase 1 fallback: in-process call
+        from src.agents.financial_orchestrator import run_financial_orchestrator
+        research_text = run_financial_orchestrator(query, rag_context=rag_text)
 
     synthesizer = create_synthesizer()
     synthesis_prompt = (

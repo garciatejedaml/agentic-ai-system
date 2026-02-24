@@ -80,4 +80,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Phase 2: service selector entrypoint (picks role via AGENT_SERVICE env var)
+COPY docker/phase2_entrypoint.sh /phase2_entrypoint.sh
+RUN chmod +x /phase2_entrypoint.sh
+
 ENTRYPOINT ["/entrypoint.sh"]
