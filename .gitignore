@@ -28,24 +28,34 @@ pip-wheel-metadata/
 # ── Data & generated files ───────────────────────────────────────────────────
 data/kdb/*.parquet
 data/kdb/*.csv
-# Keep data/sample_docs tracked
+repo-rag-ingest/data/kdb/*.parquet
+repo-rag-ingest/data/kdb/*.csv
+# Keep sample_docs tracked
 !data/sample_docs/
+!repo-rag-ingest/data/sample_docs/
 
 # ── Vector DB (ChromaDB) — rebuilds from ingest_amps_docs.py ─────────────────
 .chroma_db/
 
 # ── AMPS binaries (large, proprietary) ───────────────────────────────────────
-# /amps/ = root-level folder where the user places the downloaded AMPS binary
 /amps/
+repo-rag-ingest/amps/binaries/
+repo-rag-ingest/amps/client/*.zip
 docker/amps/AMPS.tar
 docker/amps/*.tar
 docker/amps/*.tar.gz
+repo-mcp-tools/docker/amps/AMPS.tar
+repo-mcp-tools/docker/amps/*.tar
+repo-mcp-tools/docker/amps/*.tar.gz
 
 # ── KDB+ license & binary (proprietary, personal) ────────────────────────────
 docker/kdb/kc.lic
 docker/kdb/*.lic
 docker/kdb/linuxx86.zip
 docker/kdb/*.zip
+repo-mcp-tools/docker/kdb/kc.lic
+repo-mcp-tools/docker/kdb/*.lic
+repo-mcp-tools/docker/kdb/*.zip
 
 # ── macOS ─────────────────────────────────────────────────────────────────────
 .DS_Store
@@ -83,6 +93,7 @@ htmlcov/
 *.tfplan
 terraform.tfvars
 infra/.terraform/
+repo-infra/.terraform/
 cdk.out/
 # LocalStack data (if using host-mounted volume instead of named volume)
 .localstack/
