@@ -66,11 +66,20 @@ def create_agent_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator:
-        register_agent(agent_id, endpoint, capabilities, desk_names)
-        print(f"[{agent_id}] Registered at {endpoint}")
+        # Graceful startup: DynamoDB may not be ready immediately.
+        # The /health endpoint renews the TTL on each call, so eventual
+        # registration is guaranteed once the registry becomes available.
+        try:
+            register_agent(agent_id, endpoint, capabilities, desk_names)
+            print(f"[{agent_id}] Registered at {endpoint}")
+        except Exception as e:
+            print(f"[{agent_id}] Warning: DynamoDB registration failed (will retry via /health): {e}")
         yield
-        deregister_agent(agent_id)
-        print(f"[{agent_id}] Deregistered")
+        try:
+            deregister_agent(agent_id)
+            print(f"[{agent_id}] Deregistered")
+        except Exception as e:
+            print(f"[{agent_id}] Warning: DynamoDB deregistration failed: {e}")
 
     app = FastAPI(title=name, version="1.0.0", lifespan=lifespan)
 

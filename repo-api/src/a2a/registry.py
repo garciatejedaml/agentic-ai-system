@@ -16,7 +16,7 @@ import os
 import time
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 _TABLE = os.getenv("AGENT_REGISTRY_TABLE", "agentic-ai-staging-agent-registry")
 _REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
@@ -60,7 +60,7 @@ def register_agent(
             "registered_at": int(time.time()),
             "ttl": int(time.time()) + _TTL_SECONDS,
         })
-    except ClientError as e:
+    except (ClientError, BotoCoreError, Exception) as e:
         print(f"[registry] WARNING: could not register {agent_id}: {e}")
 
 
@@ -68,7 +68,7 @@ def deregister_agent(agent_id: str) -> None:
     """Remove agent from registry (called on shutdown)."""
     try:
         _table().delete_item(Key={"agent_id": agent_id})
-    except ClientError as e:
+    except (ClientError, BotoCoreError, Exception) as e:
         print(f"[registry] WARNING: could not deregister {agent_id}: {e}")
 
 
@@ -82,7 +82,7 @@ def discover_agent(agent_id: str) -> dict | None:
     try:
         resp = _table().get_item(Key={"agent_id": agent_id})
         return resp.get("Item")
-    except ClientError as e:
+    except (ClientError, BotoCoreError, Exception) as e:
         print(f"[registry] WARNING: could not discover {agent_id}: {e}")
         return None
 
