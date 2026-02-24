@@ -10,8 +10,11 @@
 #   AMPS_ENABLED=true  →  needs AMPS MCP server reachable (add as sidecar or use HTTP transport)
 #   KDB_ENABLED=true   →  KDB_MODE=poc uses the parquet data bundled in the image
 #
-# Build:
-#   docker build -t agentic-ai-system:latest .
+# Build (run from the monorepo root — build context must include all sub-repos):
+#   docker build -f repo-api/Dockerfile -t agentic-ai-system:latest .
+#
+# In a real multi-repo CI/CD setup this Dockerfile would be replaced by a
+# pipeline that pulls each repo separately before building.
 #
 # Run locally:
 #   docker run -p 8000:8000 \
@@ -35,13 +38,14 @@ RUN pip install --no-cache-dir uv
 WORKDIR /app
 
 # ── Python dependencies ────────────────────────────────────────────────────────
-COPY requirements.txt .
+# Build context = monorepo root; reference sub-repo paths
+COPY repo-api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install AMPS Python client from local zip if present (optional)
 # The zip is not in PyPI; it ships with the AMPS binary download.
 # If building without AMPS, this step is safely skipped.
-COPY amps/client/ /tmp/amps-client/
+COPY repo-rag-ingest/amps/client/ /tmp/amps-client/
 RUN if ls /tmp/amps-client/*.zip 2>/dev/null; then \
         pip install --no-cache-dir /tmp/amps-client/*.zip; \
     else \
@@ -49,17 +53,23 @@ RUN if ls /tmp/amps-client/*.zip 2>/dev/null; then \
     fi
 
 # ── Application source ────────────────────────────────────────────────────────
-COPY src/ ./src/
-COPY scripts/ ./scripts/
-COPY data/ ./data/
-COPY main.py .
+# API code from repo-api
+COPY repo-api/src/ ./src/
+# MCP servers from repo-mcp-tools, placed at src/mcp_server/ (matches MCP_SERVER_DIR)
+COPY repo-mcp-tools/ ./src/mcp_server/
+# Ingestion scripts and training data from repo-rag-ingest
+COPY repo-rag-ingest/scripts/ ./scripts/
+COPY repo-rag-ingest/data/ ./data/
+COPY repo-api/main.py .
 
 # Create directory for ChromaDB persistence
 # In production: mount an EFS volume here or switch to Aurora pgvector
 RUN mkdir -p /data/chroma_db
 
 # ── Runtime configuration ──────────────────────────────────────────────────────
-ENV PYTHONUNBUFFERED=1 \
+# MCP_SERVER_DIR tells mcp_clients.py where to find the MCP server scripts in-container
+ENV MCP_SERVER_DIR=/app/src/mcp_server \
+    PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=8000 \
     # Default to Bedrock in production; override with LLM_PROVIDER=anthropic for local testing
@@ -77,11 +87,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 # Pre-warm: run ingest on startup if ChromaDB is empty
 # Uses the CMD entrypoint script to ensure RAG is ready before serving
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY repo-api/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Phase 2: service selector entrypoint (picks role via AGENT_SERVICE env var)
-COPY docker/phase2_entrypoint.sh /phase2_entrypoint.sh
+COPY repo-api/docker/phase2_entrypoint.sh /phase2_entrypoint.sh
 RUN chmod +x /phase2_entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

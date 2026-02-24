@@ -23,7 +23,7 @@ name: agentic-ai-amps
 services:
   amps:
     build:
-      context: ./docker/amps
+      context: ../repo-mcp-tools/docker/amps
       dockerfile: Dockerfile
     platform: linux/amd64       # Run x86_64 binary via Rosetta on M1 Mac
     container_name: amps-server

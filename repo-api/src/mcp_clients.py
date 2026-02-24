@@ -27,6 +27,13 @@ import os
 import sys
 from contextlib import contextmanager, ExitStack
 
+# Resolve the directory containing the MCP server scripts.
+# In Docker (build context = repo root): set MCP_SERVER_DIR=/app/src/mcp_server
+# In local monorepo dev: defaults to <repo-root>/repo-mcp-tools/
+_MCP_SERVER_DIR = os.environ.get("MCP_SERVER_DIR") or os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "repo-mcp-tools")
+)
+
 from mcp import StdioServerParameters, stdio_client
 from strands.tools.mcp import MCPClient
 
@@ -66,10 +73,7 @@ def _filesystem_client(path: str) -> MCPClient:
 
 def _amps_client() -> MCPClient:
     """AMPS MCP – subscribe, SOW query, publish, and server info."""
-    server_script = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "src", "mcp_server", "amps_mcp_server.py",
-    )
+    server_script = os.path.join(_MCP_SERVER_DIR, "amps_mcp_server.py")
     return MCPClient(
         lambda: stdio_client(
             StdioServerParameters(
@@ -83,10 +87,7 @@ def _amps_client() -> MCPClient:
 
 def _kdb_client() -> MCPClient:
     """KDB MCP – Bond RFQ historical analytics (DuckDB in poc mode, KDB+ in server mode)."""
-    server_script = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "src", "mcp_server", "kdb_mcp_server.py",
-    )
+    server_script = os.path.join(_MCP_SERVER_DIR, "kdb_mcp_server.py")
     return MCPClient(
         lambda: stdio_client(
             StdioServerParameters(

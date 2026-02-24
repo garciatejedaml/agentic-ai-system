@@ -24,7 +24,7 @@ name: agentic-ai-kdb
 services:
   kdb:
     build:
-      context: ./docker/kdb
+      context: ../repo-mcp-tools/docker/kdb
       dockerfile: Dockerfile
     container_name: kdb-server
     restart: unless-stopped

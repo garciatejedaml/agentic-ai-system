@@ -11,9 +11,9 @@
 #   financial-orchestrator :8003   Financial Orchestrator (calls KDB + AMPS via A2A)
 #   api-service           :8000   FastAPI + LangGraph gateway (user-facing)
 #
-# Usage:
-#   docker build -t agentic-ai-system:phase2 .
-#   docker compose -f docker-compose.phase2.yml up -d
+# Usage (from monorepo root):
+#   docker build -f repo-api/Dockerfile -t agentic-ai-system:phase2 .
+#   docker compose -f repo-local-dev/docker-compose.phase2.yml up -d
 #
 # Verify:
 #   curl http://localhost:8001/.well-known/agent.json
@@ -38,8 +38,8 @@ x-common-env: &common-env
 
 x-agent-base: &agent-base
   build:
-    context: .
-    dockerfile: Dockerfile
+    context: ..
+    dockerfile: repo-api/Dockerfile
   entrypoint: ["/phase2_entrypoint.sh"]
   restart: unless-stopped
   depends_on:
