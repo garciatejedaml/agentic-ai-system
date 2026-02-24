@@ -92,6 +92,51 @@ resource "aws_dynamodb_table" "agent_registry" {
   tags = { Name = "${local.name_prefix}-agent-registry" }
 }
 
+# ── DynamoDB — Session Store ───────────────────────────────────────────────────
+# Persists conversation history for multi-turn interactions.
+# Designed for ~500 concurrent users on PAY_PER_REQUEST billing.
+#
+# Item TTL: configurable per deployment (default 24h).
+# DynamoDB handles TTL expiry automatically — no cleanup Lambda needed.
+#
+# GSI ByUser enables listing all sessions for a given trader (future feature).
+
+resource "aws_dynamodb_table" "sessions" {
+  name         = "${local.name_prefix}-sessions"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "session_id"
+
+  attribute {
+    name = "session_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  # TTL: DynamoDB auto-expires sessions based on the 'ttl' attribute (Unix epoch)
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  # GSI: query all sessions for a specific trader
+  global_secondary_index {
+    name            = "ByUser"
+    hash_key        = "user_id"
+    projection_type = "INCLUDE"
+    non_key_attributes = ["session_id", "desk_name", "created_at", "updated_at", "message_count"]
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  tags = { Name = "${local.name_prefix}-sessions" }
+}
+
 # ── SQS — Async Job Queue ─────────────────────────────────────────────────────
 # Decouples API from long-running agent runs (>30s).
 # API returns job_id immediately; client polls /v1/jobs/{id} for status.

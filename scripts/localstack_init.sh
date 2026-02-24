@@ -62,6 +62,28 @@ $AWS dynamodb create-table \
 
 echo "[localstack-init] DynamoDB: agent registry table created"
 
+# ── DynamoDB: session store ────────────────────────────────────────────────────
+
+$AWS dynamodb create-table \
+  --table-name agentic-ai-staging-sessions \
+  --attribute-definitions \
+    AttributeName=session_id,AttributeType=S \
+    AttributeName=user_id,AttributeType=S \
+  --key-schema AttributeName=session_id,KeyType=HASH \
+  --global-secondary-indexes '[{
+    "IndexName": "ByUser",
+    "KeySchema": [{"AttributeName":"user_id","KeyType":"HASH"}],
+    "Projection": {
+      "ProjectionType":"INCLUDE",
+      "NonKeyAttributes":["session_id","desk_name","created_at","updated_at","message_count"]
+    },
+    "ProvisionedThroughput": {"ReadCapacityUnits":5,"WriteCapacityUnits":5}
+  }]' \
+  --billing-mode PAY_PER_REQUEST \
+  > /dev/null
+
+echo "[localstack-init] DynamoDB: session store table created"
+
 # ── Secrets Manager: app secrets ──────────────────────────────────────────────
 
 $AWS secretsmanager create-secret \

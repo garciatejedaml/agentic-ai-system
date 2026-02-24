@@ -57,11 +57,29 @@ resource "aws_iam_role_policy" "ecs_task_permissions" {
           "dynamodb:GetItem",
           "dynamodb:Query",
           "dynamodb:Scan",
-          "dynamodb:PutItem",   # agents self-register on startup
+          "dynamodb:PutItem",
+          "dynamodb:DeleteItem", # agents self-deregister on shutdown
         ]
         Resource = [
           aws_dynamodb_table.agent_registry.arn,
           "${aws_dynamodb_table.agent_registry.arn}/index/*",
+        ]
+      },
+      # ── DynamoDB: session store ────────────────────────────────────────────
+      # API service reads/writes sessions; agents read session_id but don't
+      # write sessions directly (the API service owns session lifecycle).
+      {
+        Sid    = "DynamoSessions"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:Query",      # ByUser GSI queries
+        ]
+        Resource = [
+          aws_dynamodb_table.sessions.arn,
+          "${aws_dynamodb_table.sessions.arn}/index/*",
         ]
       },
       # ── Secrets Manager: read app secrets at runtime ───────────────────────
