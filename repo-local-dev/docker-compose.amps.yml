@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AMPS Server stack for local POC development.
+#
+# PREREQUISITE: Place the AMPS Linux tarball at docker/amps/AMPS.tar
+#   → Register at https://crankuptheamps.com/evaluate to obtain the binary.
+#
+# Usage:
+#   docker compose -f docker-compose.amps.yml up -d        # start
+#   docker compose -f docker-compose.amps.yml down         # stop
+#   docker compose -f docker-compose.amps.yml logs -f amps # logs
+#
+# After startup:
+#   AMPS Admin  → http://localhost:8085/amps.json
+#   AMPS Topics → http://localhost:8085/topics.json
+#   AMPS TCP    → tcp://localhost:9007/amps/json   (Python client)
+#
+# Then in .env:
+#   AMPS_ENABLED=true
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: agentic-ai-amps
+
+services:
+  amps:
+    build:
+      context: ../repo-mcp-tools/docker/amps
+      dockerfile: Dockerfile
+    platform: linux/amd64       # Run x86_64 binary via Rosetta on M1 Mac
+    container_name: amps-server
+    restart: unless-stopped
+    ports:
+      - "8085:8085"             # HTTP admin (amps.json, topics.json, clients.json)
+      - "9007:9007"             # TCP AMPS protocol (JSON message type)
+    volumes:
+      - amps_sow:/sow           # Persist SOW data across restarts
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8085/amps.json"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  amps_sow:
