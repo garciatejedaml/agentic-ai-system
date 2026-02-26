@@ -7,11 +7,31 @@
 #   • LocalStack (AWS DynamoDB / SQS emulation)
 #   • 6 specialist A2A agents + 1 legacy orchestrator
 #   • FastAPI gateway with LangGraph + LLM Router
+#   • Optional: Ollama (free local LLM — no API key required)
 #
 # PREREQUISITE: AMPS binary tarball at repo-mcp-tools/docker/amps/AMPS.tar
 #   Register at https://crankuptheamps.com/evaluate to obtain it.
 #
-# Usage (from monorepo root):
+# ── LLM options ──────────────────────────────────────────────────────────────
+#
+# Option A — Anthropic API (default, best quality):
+#   Set ANTHROPIC_API_KEY in .env, then:
+#   docker compose -f repo-local-dev/docker-compose.local.yml --env-file .env up -d
+#
+# Option B — Ollama on Mac (free, no API key, uses Metal GPU):
+#   1. Install Ollama natively: brew install ollama && ollama serve
+#   2. Pull the model:           ollama pull llama3.2:3b
+#   3. Start the stack with Ollama provider:
+#      LLM_PROVIDER=ollama docker compose -f repo-local-dev/docker-compose.local.yml --env-file .env up -d
+#   Ollama serves on :11434 (accessible from Docker via host.docker.internal)
+#
+# Option C — Ollama in Docker (Linux / CI / no native Ollama):
+#   docker compose -f repo-local-dev/docker-compose.local.yml \
+#     --profile ollama --env-file .env \
+#     -e LLM_PROVIDER=ollama up -d
+#   Note: uses CPU only on Mac (no Metal GPU). First run pulls the model (~2GB).
+#
+# ── Usage ─────────────────────────────────────────────────────────────────────
 #
 #   # First time — build images:
 #   docker compose -f repo-local-dev/docker-compose.local.yml build
@@ -47,16 +67,22 @@
 #   9007-9011 — AMPS TCP ports (core, portfolio, CDS, ETF, risk)
 #   9200 — OpenSearch
 #   4566 — LocalStack (AWS emulation)
+#   11434 — Ollama (only with --profile ollama)
 
 name: agentic-ai-local
 
 # ── Shared environment ────────────────────────────────────────────────────────
 
 x-common-env: &common-env
-  LLM_PROVIDER: anthropic
-  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+  # Anthropic (LLM_PROVIDER=anthropic)
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
   ANTHROPIC_FAST_MODEL: ${ANTHROPIC_FAST_MODEL:-claude-haiku-4-5-20251001}
+  # Ollama (LLM_PROVIDER=ollama) — uses host.docker.internal for native Mac Ollama
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+  OLLAMA_FAST_MODEL: ${OLLAMA_FAST_MODEL:-}
   AWS_DEFAULT_REGION: us-east-1
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
@@ -452,6 +478,31 @@ services:
       retries: 5
       start_period: 120s
 
+  # ── Ollama — optional local LLM (activate with --profile ollama) ────────────
+  # Use this when running on Linux or if you don't want to install Ollama natively.
+  # On Mac: prefer native Ollama (brew install ollama) — it uses Metal GPU acceleration.
+  # First run downloads the model (~2GB for llama3.2:3b). Subsequent starts use cache.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: local-ollama
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Pull the model on first start, then keep serving
+    entrypoint: ["/bin/sh", "-c",
+      "ollama serve &
+       sleep 5 &&
+       ollama pull ${OLLAMA_MODEL:-llama3.2:3b} &&
+       wait"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
 volumes:
   localstack_data:
   opensearch_data:
@@ -460,3 +511,4 @@ volumes:
   amps_cds_sow:
   amps_etf_sow:
   amps_risk_sow:
+  ollama_data:

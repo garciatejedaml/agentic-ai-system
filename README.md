@@ -48,7 +48,7 @@ User Query (REST / OpenAI-compatible chat API)
 | Real-time data | **AMPS** | State-of-World (SOW) message bus |
 | Knowledge | **OpenSearch k-NN** | Semantic vector search (RAG) |
 | Registry | **LocalStack DynamoDB** | Agent discovery (AWS-compatible) |
-| LLM | **Anthropic API** | Claude Sonnet (reasoning) + Haiku (routing) |
+| LLM | **Anthropic API** or **Ollama** | Claude Sonnet/Haiku (cloud) or Llama/Qwen (local, free) |
 
 ### Specialist Agents
 
@@ -84,7 +84,9 @@ User Query (REST / OpenAI-compatible chat API)
    - Enable Rosetta emulation for the AMPS binary (x86_64 on Apple Silicon):
      `Settings → General → Use Rosetta for x86/amd64 emulation`
 
-2. **Anthropic API key** — [get one here](https://console.anthropic.com)
+2. **LLM — pick one:**
+   - **Anthropic API** (best quality): get a key at [console.anthropic.com](https://console.anthropic.com)
+   - **Ollama** (free, no key, runs locally): see [Ollama setup](#option-b-ollama-free-no-api-key) below
 
 3. **AMPS binary** (proprietary — required for live data simulation):
    - Register at [crankuptheamps.com/evaluate](https://crankuptheamps.com/evaluate)
@@ -99,16 +101,52 @@ User Query (REST / OpenAI-compatible chat API)
 git clone <repo-url>
 cd agentic-ai-system
 
-# Create your .env from the example
 cp .env.example .env
-# Edit .env and set your ANTHROPIC_API_KEY
+# Edit .env — see the LLM section below for your choice
 ```
 
-Your `.env` minimum:
+**Option A — Anthropic API:**
 
 ```bash
+# In .env:
+LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 ```
+
+**Option B — Ollama (free, no API key):** <a name="option-b-ollama-free-no-api-key"></a>
+
+```bash
+# 1. Install Ollama on Mac (uses Metal GPU — much faster than Docker):
+brew install ollama
+
+# 2. Start Ollama (keep this terminal open, or run as a background service):
+ollama serve
+
+# 3. Pull the model (first time only, ~2GB download):
+ollama pull llama3.2:3b
+
+# 4. In .env:
+LLM_PROVIDER=ollama
+# OLLAMA_BASE_URL and OLLAMA_MODEL have sensible defaults — no changes needed
+```
+
+> **Model recommendations for Ollama:**
+> | Model | RAM | Routing | Tool use | Best for |
+> |-------|-----|---------|----------|----------|
+> | `llama3.2:3b` | ~2 GB | ✅ Good | ⚠️ Partial | Fast routing, lightweight |
+> | `qwen2.5:7b` | ~5 GB | ✅ Excellent | ✅ Good | Best balance (recommended) |
+> | `mistral:7b` | ~5 GB | ✅ Good | ✅ Good | Instruction following |
+> | `llama3.1:8b` | ~5 GB | ✅ Excellent | ✅ Good | Full agent reasoning |
+>
+> **Tool use note**: `llama3.2:3b` handles LLM routing well but may struggle with complex
+> multi-step MCP tool loops. For full agent tool use, use `qwen2.5:7b` or larger:
+> ```bash
+> ollama pull qwen2.5:7b
+> # In .env:
+> OLLAMA_MODEL=qwen2.5:7b
+> ```
+>
+> On Apple Silicon, Ollama uses Metal GPU automatically — expect 20-50 tok/s for 7B models.
 
 ---
 
@@ -338,6 +376,39 @@ Then:
 ---
 
 ## Troubleshooting
+
+### Ollama not reachable from Docker containers
+
+The most common issue when using `LLM_PROVIDER=ollama` with native Mac Ollama:
+
+```bash
+# Verify Ollama is running on the host
+curl http://localhost:11434/
+
+# Verify it's reachable from inside a container
+docker exec local-api-service curl -s http://host.docker.internal:11434/
+
+# List available models
+ollama list
+```
+
+If Ollama isn't running: `ollama serve` (keep the terminal open or configure it as a macOS service).
+
+If the model isn't pulled: `ollama pull llama3.2:3b`
+
+### Ollama responses are slow
+
+- On Apple Silicon, confirm Ollama is using Metal (should say `[metal]` in `ollama serve` output)
+- Try a smaller model: `ollama pull llama3.2:1b` and set `OLLAMA_MODEL=llama3.2:1b`
+- The first request is slower because the model loads into GPU memory; subsequent calls are fast
+
+### Ollama router returns wrong agents
+
+Smaller models (3B and below) occasionally produce malformed JSON or route poorly. If routing
+fails, the system falls back to `kdb-agent`. To improve: use a larger model (`qwen2.5:7b` or
+`llama3.1:8b`) or use `LLM_PROVIDER=anthropic` for the router specifically.
+
+---
 
 ### OpenSearch exits with code 137 (OOM)
 

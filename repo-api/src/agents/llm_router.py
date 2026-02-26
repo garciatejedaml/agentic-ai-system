@@ -118,16 +118,32 @@ def route_query(query: str) -> RouterDecision:
     try:
         import litellm
 
-        response = litellm.completion(
-            model=f"anthropic/{config.ANTHROPIC_FAST_MODEL}",
-            messages=[
-                {"role": "system", "content": _ROUTER_SYSTEM},
-                {"role": "user", "content": prompt},
-            ],
-            api_key=config.ANTHROPIC_API_KEY,
-            max_tokens=256,
-            temperature=0,
-        )
+        if config.LLM_PROVIDER == "ollama":
+            # Use the fast model if set, otherwise the main model
+            ollama_model = config.OLLAMA_FAST_MODEL or config.OLLAMA_MODEL
+            response = litellm.completion(
+                model=f"ollama/{ollama_model}",
+                messages=[
+                    {"role": "system", "content": _ROUTER_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                api_base=config.OLLAMA_BASE_URL,
+                api_key="ollama",
+                max_tokens=256,
+                temperature=0,
+                format="json",
+            )
+        else:
+            response = litellm.completion(
+                model=f"anthropic/{config.ANTHROPIC_FAST_MODEL}",
+                messages=[
+                    {"role": "system", "content": _ROUTER_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                api_key=config.ANTHROPIC_API_KEY,
+                max_tokens=256,
+                temperature=0,
+            )
         raw = response.choices[0].message.content.strip()
         # Strip markdown code fences that Haiku may wrap around JSON
         if raw.startswith("```"):

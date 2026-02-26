@@ -6,7 +6,7 @@ load_dotenv()
 
 
 class Config:
-    # Provider
+    # Provider: "anthropic" | "bedrock" | "ollama"
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "anthropic")
 
     # Anthropic (local)
@@ -14,6 +14,14 @@ class Config:
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
     # Fast/cheap model for sub-agents (KDB, AMPS) that mostly call tools
     ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
+
+    # Ollama (free local LLM — no API key required)
+    # Base URL when Ollama runs natively on Mac: http://host.docker.internal:11434
+    # Base URL when Ollama runs in Docker:       http://ollama:11434
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+    # If blank, uses OLLAMA_MODEL for both routing and agent reasoning
+    OLLAMA_FAST_MODEL: str = os.getenv("OLLAMA_FAST_MODEL", "")
 
     # Bedrock (AWS)
     AWS_REGION: str = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
@@ -80,7 +88,7 @@ class Config:
 
     @classmethod
     def is_local(cls) -> bool:
-        return cls.LLM_PROVIDER == "anthropic"
+        return cls.LLM_PROVIDER in ("anthropic", "ollama")
 
     @classmethod
     def get_agent_url(cls, agent_id: str) -> str:
@@ -98,7 +106,7 @@ class Config:
 
     @classmethod
     def validate(cls) -> None:
-        if cls.is_local() and not cls.ANTHROPIC_API_KEY:
+        if cls.LLM_PROVIDER == "anthropic" and not cls.ANTHROPIC_API_KEY:
             raise ValueError(
                 "ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic. "
                 "Copy .env.example to .env and set your key."
