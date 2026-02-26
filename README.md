@@ -1,239 +1,370 @@
-# Agentic AI System — POC
+# Agentic AI System
 
-Sistema multi-agente que combina **LangGraph** como orquestador de flujo, **Strands Agents** como grupo de agentes en nodos específicos, y **RAG** con ChromaDB para recuperación de contexto.
-
-## Arquitectura
-
-```
-User Query
-    │
-    ▼
-┌─────────────────────────────────────────────────────────┐
-│                  LangGraph StateGraph                    │
-│                                                         │
-│  ┌──────────┐   ┌──────────┐   ┌───────────────────┐   │
-│  │  intake  │──▶│ retrieve │──▶│     strands       │   │
-│  │  (node)  │   │  (RAG)   │   │  (multi-agent)    │   │
-│  └──────────┘   └──────────┘   │  ┌─────────────┐  │   │
-│                     │          │  │ Researcher  │  │   │
-│                 ChromaDB       │  │   Agent     │  │   │
-│                                │  └──────┬──────┘  │   │
-│                                │         │         │   │
-│                                │  ┌──────▼──────┐  │   │
-│                                │  │ Synthesizer │  │   │
-│                                │  │   Agent     │  │   │
-│                                │  └─────────────┘  │   │
-│                                └─────────┬─────────┘   │
-│                                          │              │
-│                                   ┌──────▼──────┐       │
-│                                   │   format    │       │
-│                                   │   (node)    │       │
-│                                   └─────────────┘       │
-└─────────────────────────────────────────────────────────┘
-    │
-    ▼
-Final Response
-```
-
-### Responsabilidades
-
-| Capa | Tecnología | Rol |
-|------|------------|-----|
-| Orquestación | **LangGraph** | Control de flujo, estado compartido, routing |
-| Agentes | **Strands Agents** | Investigación + síntesis con tool use |
-| Conocimiento | **ChromaDB + sentence-transformers** | RAG local (dev) |
-| LLM local | **Anthropic API** | Claude via API key (dev) |
-| LLM producción | **Amazon Bedrock** | Claude via IAM roles (AWS) |
+A multi-agent financial data platform built with **LangGraph**, **Strands Agents**, **OpenSearch RAG**, and **AMPS real-time messaging** — designed as a fully Dockerized local development environment.
 
 ---
 
-## Setup local (MacBook)
+## Architecture
 
-### Prerequisitos
-
-- Python 3.11+
-- API Key de Anthropic
-
-```bash
-# Verifica Python
-python3 --version  # >= 3.11
-
-# Instala pyenv si no tienes Python 3.11+
-brew install pyenv
-pyenv install 3.11.9
-pyenv local 3.11.9
+```
+User Query (REST / OpenAI-compatible chat API)
+      │
+      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   LangGraph StateGraph                       │
+│                    (api-service :8000)                       │
+│                                                              │
+│  intake ──► retrieve (RAG) ──► orchestrator ──► format      │
+│                 │                    │                        │
+│             OpenSearch            LLM Router                 │
+│          (k-NN + BM25)         (Haiku, 1 call)              │
+└───────────────────────────────┬─────────────────────────────┘
+                                │ A2A (parallel)
+          ┌─────────────────────┼──────────────────────┐
+          ▼                     ▼                      ▼
+   ┌─────────────┐    ┌─────────────────┐    ┌───────────────┐
+   │  KDB Agent  │    │   AMPS Agent    │    │ Portfolio /   │
+   │   :8001     │    │    :8002        │    │ CDS / ETF /   │
+   │ Historical  │    │ Real-time SOW   │    │ Risk agents   │
+   │ bond RFQs   │    │ + RAG routing   │    │ :8004–:8007   │
+   └─────────────┘    └────────┬────────┘    └───────────────┘
+                               │ MCP tools
+                    ┌──────────┴──────────┐
+                    ▼                     ▼
+            AMPS Core :9007      AMPS Products
+            positions / orders   :9008 portfolio_nav
+            market-data          :9009 cds_spreads
+                                 :9010 etf_nav
+                                 :9011 risk_metrics
 ```
 
-### 1. Clonar y crear entorno virtual
+### Stack
+
+| Layer | Technology | Role |
+|-------|-----------|------|
+| Gateway | **FastAPI + LangGraph** | Flow control, RAG retrieval, A2A dispatch |
+| Routing | **LLM Router (Haiku)** | Single LLM call → JSON routing decision |
+| Agents | **Strands Agents** | Specialist agents with MCP tool use |
+| Real-time data | **AMPS** | State-of-World (SOW) message bus |
+| Knowledge | **OpenSearch k-NN** | Semantic vector search (RAG) |
+| Registry | **LocalStack DynamoDB** | Agent discovery (AWS-compatible) |
+| LLM | **Anthropic API** | Claude Sonnet (reasoning) + Haiku (routing) |
+
+### Specialist Agents
+
+| Agent | Port | Capabilities |
+|-------|------|-------------|
+| `kdb-agent` | 8001 | Historical bond RFQ analytics, trade history |
+| `amps-agent` | 8002 | Live AMPS data — RAG-driven host:port discovery |
+| `financial-orchestrator` | 8003 | Phase 2 legacy orchestrator (fallback) |
+| `portfolio-agent` | 8004 | Portfolio holdings, exposure, allocation |
+| `cds-agent` | 8005 | CDS spreads, term structures, credit risk |
+| `etf-agent` | 8006 | ETF NAV, flows, basket composition |
+| `risk-pnl-agent` | 8007 | VaR, DV01, CS01, P&L attribution |
+
+### AMPS Topics
+
+| Instance | Admin | TCP | Topics |
+|----------|-------|-----|--------|
+| amps-core | 8085 | 9007 | positions, orders, market-data |
+| amps-portfolio | 8086 | 9008 | portfolio_nav |
+| amps-cds | 8087 | 9009 | cds_spreads |
+| amps-etf | 8088 | 9010 | etf_nav |
+| amps-risk | 8089 | 9011 | risk_metrics |
+
+---
+
+## Local Setup with Docker Desktop
+
+### Prerequisites
+
+1. **Docker Desktop** — [download here](https://www.docker.com/products/docker-desktop/)
+   - Allocate at least **4 GB RAM** to Docker Desktop:
+     `Settings → Resources → Memory → 4 GB`
+   - Enable Rosetta emulation for the AMPS binary (x86_64 on Apple Silicon):
+     `Settings → General → Use Rosetta for x86/amd64 emulation`
+
+2. **Anthropic API key** — [get one here](https://console.anthropic.com)
+
+3. **AMPS binary** (proprietary — required for live data simulation):
+   - Register at [crankuptheamps.com/evaluate](https://crankuptheamps.com/evaluate)
+   - Place the Linux tarball at: `repo-mcp-tools/docker/amps/AMPS.tar`
+   - Without this file the AMPS services won't start, but all other agents still work with POC static data.
+
+---
+
+### Step 1 — Clone and configure
 
 ```bash
 git clone <repo-url>
 cd agentic-ai-system
 
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 2. Instalar dependencias
-
-```bash
-pip install -r requirements.txt
-```
-
-> **Nota M1/M2/M3 Mac:** Si `chromadb` falla al instalar:
-> ```bash
-> brew install cmake
-> pip install chroma-hnswlib
-> pip install -r requirements.txt
-> ```
-
-### 3. Configurar variables de entorno
-
-```bash
+# Create your .env from the example
 cp .env.example .env
-# Edita .env y pon tu API key
+# Edit .env and set your ANTHROPIC_API_KEY
 ```
 
-Variables clave en `.env`:
+Your `.env` minimum:
 
 ```bash
-LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-tu-key-aqui
-ANTHROPIC_MODEL=claude-haiku-4-5   # haiku = más barato para dev
-```
-
-### 4. Ingestar documentos al RAG
-
-```bash
-# Ingestar los docs de ejemplo incluidos en data/sample_docs/
-python scripts/ingest_docs.py
-
-# O tus propios archivos .txt / .md
-python scripts/ingest_docs.py /ruta/a/tus/docs/
-```
-
-### 5. Correr
-
-```bash
-# Modo interactivo (REPL)
-python main.py
-
-# Query única
-python main.py "¿Qué es LangGraph y cómo se integra con Strands?"
-
-# Con debug info
-LANGGRAPH_DEBUG=true python main.py "¿Cómo funciona el RAG?"
-```
-
-### 6. Tests
-
-Los tests son unitarios y no requieren LLM real (todo mockeado):
-
-```bash
-# Todos los tests
-pytest tests/ -v
-
-# Tests individuales
-pytest tests/test_rag.py -v
-pytest tests/test_graph.py -v
+ANTHROPIC_API_KEY=sk-ant-your-key-here
 ```
 
 ---
 
-## Estructura del proyecto
+### Step 2 — Build Docker images
+
+```bash
+# Build both images (agentic-ai-api + agentic-ai-amps)
+docker compose -f repo-local-dev/docker-compose.local.yml build
+```
+
+This builds:
+- `agentic-ai-api:latest` — Python service image (agents, API gateway, publishers)
+- `agentic-ai-amps:latest` — AMPS server image (requires `AMPS.tar`)
+
+> **First build takes ~5 minutes** — it downloads Python dependencies including
+> `sentence-transformers` (~400 MB) and compiles the AMPS Python client.
+
+---
+
+### Step 3 — Start everything
+
+```bash
+docker compose -f repo-local-dev/docker-compose.local.yml --env-file .env up -d
+```
+
+Services start in dependency order. Wait ~2 minutes for all health checks to pass:
+
+```bash
+# Watch startup progress
+docker compose -f repo-local-dev/docker-compose.local.yml logs -f
+```
+
+---
+
+### Step 4 — Verify
+
+```bash
+# API gateway
+curl http://localhost:8000/
+
+# All specialist agents (should return agent card JSON)
+for p in 8001 8002 8004 8005 8006 8007; do
+  echo "=== :$p ===" && curl -s http://localhost:$p/.well-known/agent.json | python3 -m json.tool | grep '"name"'
+done
+
+# OpenSearch RAG (should show doc count > 0)
+curl -s http://localhost:9200/knowledge_base/_count | python3 -m json.tool
+
+# AMPS core topics (if AMPS binary is installed)
+curl -s http://localhost:8085/topics.json | python3 -m json.tool
+```
+
+---
+
+### Step 5 — Send queries
+
+**OpenAI-compatible chat endpoint** (works with continue.dev, Cursor, etc.):
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "agentic-ai",
+    "messages": [{"role": "user", "content": "What are the current CDS spreads for Ford Motor Credit?"}]
+  }'
+```
+
+**Direct A2A call to a specialist agent:**
+
+```bash
+curl -X POST http://localhost:8002/a2a \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tasks/send",
+    "id": "t1",
+    "params": {
+      "id": "t1",
+      "message": {"parts": [{"text": "Show me live portfolio NAV for all desks"}]}
+    }
+  }'
+```
+
+**Cross-asset parallel query** (LLM Router dispatches to multiple agents simultaneously):
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "agentic-ai",
+    "messages": [{"role": "user", "content": "Give me HY portfolio NAV, current CDS spreads for Ford, and today P&L. I need everything at once."}]
+  }'
+```
+
+---
+
+### Stop the stack
+
+```bash
+docker compose -f repo-local-dev/docker-compose.local.yml down
+
+# Remove volumes (clears OpenSearch index, AMPS SOW data, LocalStack tables):
+docker compose -f repo-local-dev/docker-compose.local.yml down -v
+```
+
+---
+
+## Project Structure
 
 ```
 agentic-ai-system/
-├── src/
-│   ├── config.py                  # Config centralizada (env vars)
-│   ├── rag/
-│   │   └── retriever.py           # ChromaDB + sentence-transformers
-│   ├── agents/
-│   │   ├── model_factory.py       # Anthropic (local) ↔ Bedrock (AWS)
-│   │   ├── tools.py               # @tool definitions para Strands
-│   │   ├── researcher.py          # Strands researcher agent
-│   │   ├── synthesizer.py         # Strands synthesizer agent
-│   │   └── orchestrator.py        # Orquesta researcher → synthesizer
-│   └── graph/
-│       ├── state.py               # AgentState (TypedDict)
-│       ├── nodes.py               # Funciones de cada nodo LangGraph
-│       └── workflow.py            # StateGraph compilado
-├── data/
-│   └── sample_docs/               # Documentos de ejemplo para RAG
-├── scripts/
-│   └── ingest_docs.py             # CLI para ingestar documentos
-├── tests/
-│   ├── test_rag.py
-│   └── test_graph.py
-├── main.py                        # Entry point
-├── requirements.txt
-└── .env.example
+├── .env.example                        # Copy to .env — fill in your API keys
+│
+├── repo-api/                           # FastAPI gateway + all agent services
+│   ├── Dockerfile                      # Single image for all Python services
+│   ├── docker/
+│   │   ├── entrypoint.sh               # API gateway entrypoint (RAG ingest + uvicorn)
+│   │   └── phase3_entrypoint.sh        # Service selector (AGENT_SERVICE env var)
+│   └── src/
+│       ├── config.py                   # Centralised env-var config
+│       ├── api/server.py               # FastAPI app (OpenAI-compatible + A2A)
+│       ├── graph/                      # LangGraph: state, nodes, workflow
+│       ├── rag/retriever.py            # OpenSearch k-NN RAG retriever
+│       ├── agents/
+│       │   ├── llm_router.py           # Haiku-based routing (1 LLM call → JSON)
+│       │   ├── orchestrator.py         # LangGraph orchestrator node
+│       │   ├── amps_agent.py           # RAG-driven AMPS agent (discovers host:port)
+│       │   ├── kdb_agent.py            # KDB historical analytics agent
+│       │   ├── portfolio_agent.py      # Portfolio holdings agent
+│       │   ├── cds_agent.py            # CDS spreads agent
+│       │   ├── etf_agent.py            # ETF analytics agent
+│       │   └── risk_pnl_agent.py       # Risk & P&L agent
+│       ├── services/                   # A2A FastAPI wrappers (one per agent)
+│       └── a2a/
+│           ├── registry.py             # DynamoDB agent registry
+│           └── parallel_client.py      # Concurrent A2A dispatch
+│
+├── repo-mcp-tools/                     # MCP servers (tools available to Strands agents)
+│   ├── amps_mcp_server.py              # amps_sow_query, amps_subscribe, etc.
+│   ├── kdb_mcp_server.py               # kdb_query_rfq_history, etc.
+│   ├── portfolio_mcp_server.py         # get_portfolio_holdings, etc.
+│   ├── cds_mcp_server.py               # get_cds_spreads, etc.
+│   └── etf_mcp_server.py              # get_etf_nav, etc.
+│   └── docker/amps/                    # AMPS server configs (config.xml per instance)
+│
+├── repo-rag-ingest/                    # RAG knowledge base sources
+│   ├── data/
+│   │   ├── sample_docs/                # General domain knowledge
+│   │   ├── amps_connections/           # Tier 1: AMPS host:port cards (1 chunk each)
+│   │   └── amps_schemas/               # Tier 2: AMPS topic field schemas
+│   └── scripts/
+│       ├── ingest_docs.py              # Ingest general docs
+│       └── ingest_amps_schemas.py      # Ingest AMPS connection cards + schemas
+│
+└── repo-local-dev/                     # Docker Compose configs + local scripts
+    ├── docker-compose.local.yml        # ★ ONE COMMAND — full local stack
+    ├── docker-compose.phase3.yml       # Phase 3 only (no AMPS, external OpenSearch)
+    ├── docker-compose.amps.yml         # AMPS stack only
+    ├── docker-compose.observability.yml # Langfuse tracing (optional)
+    └── scripts/
+        ├── amps_publisher.py           # Simulates positions/orders/market-data
+        ├── product_publishers.py       # Simulates portfolio_nav/cds/etf/risk
+        └── localstack_init.sh          # Creates DynamoDB tables on LocalStack startup
 ```
 
 ---
 
-## Migrar a AWS (producción)
+## RAG Knowledge Base
 
-### Cambios mínimos
+The system uses a two-tier document strategy for AMPS routing:
 
-1. **Variables de entorno en producción:**
-   ```bash
-   LLM_PROVIDER=bedrock
-   AWS_DEFAULT_REGION=us-east-1
-   BEDROCK_MODEL=us.anthropic.claude-haiku-4-5-20251001-v1:0
-   ```
-   No se necesita API key — Bedrock usa IAM roles automáticamente.
+**Tier 1 — Connection cards** (`repo-rag-ingest/data/amps_connections/`):
+- One file per AMPS instance (~250 chars, single chunk)
+- The amps-agent searches these to discover `host:port` before any AMPS query
+- Result: ~77 tokens per lookup (vs ~3200 with naive chunking)
 
-2. **ChromaDB → OpenSearch (recomendado para prod):**
-   En `src/rag/retriever.py` reemplaza `chromadb.PersistentClient` con
-   `langchain_aws.vectorstores.OpenSearchVectorSearch`. El resto no cambia.
+**Tier 2 — Schema docs** (`repo-rag-ingest/data/amps_schemas/`):
+- One file per topic — field names, types, filter examples, JSON samples
+- Split by `##` markdown section (tables never cut mid-row)
 
-3. **Despliegue:** ECS Fargate, Lambda + container, o EC2.
-   `main.py` se puede envolver en un FastAPI endpoint fácilmente.
+To re-ingest after changing docs:
 
-### IAM permissions mínimas para Bedrock
+```bash
+# Inside api-service container
+docker exec local-api-service python scripts/ingest_amps_schemas.py
 
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "bedrock:InvokeModel",
-    "bedrock:InvokeModelWithResponseStream"
-  ],
-  "Resource": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.*"
-}
+# Or dry-run to preview chunks without ingesting
+docker exec local-api-service python scripts/ingest_amps_schemas.py --dry-run
 ```
 
 ---
 
-## Extender el POC
+## Extending the System
 
-### Agregar un nuevo agente Strands
+### Add a new Strands agent
 
 ```python
-# src/agents/fact_checker.py
+# repo-api/src/agents/my_agent.py
 from strands import Agent
 from src.agents.model_factory import get_strands_model
-from src.agents.tools import search_knowledge_base
 
-def create_fact_checker() -> Agent:
-    return Agent(
-        model=get_strands_model(),
-        system_prompt="Verify factual claims against the knowledge base.",
-        tools=[search_knowledge_base],
-    )
-```
-
-Agrégalo en `orchestrator.py` entre researcher y synthesizer.
-
-### Routing condicional en LangGraph
-
-```python
-# En workflow.py
-def should_retry(state: AgentState) -> str:
-    return "intake" if state.get("error") else "format"
-
-graph.add_conditional_edges(
-    "strands", should_retry, {"intake": "intake", "format": "format"}
+agent = Agent(
+    model=get_strands_model(),
+    system_prompt="You answer questions about ...",
+    tools=[...],
 )
+
+async def run(query: str) -> str:
+    result = await asyncio.to_thread(agent, query)
+    return str(result)
 ```
+
+Then:
+1. Create `repo-api/src/services/my_agent_service.py` (A2A FastAPI wrapper)
+2. Add `AGENT_SERVICE: my_agent` case to `phase3_entrypoint.sh`
+3. Register the agent in `llm_router.py` `_AGENT_DESCRIPTIONS`
+4. Add a service block to `docker-compose.local.yml`
+
+### Add a new AMPS topic
+
+1. Add `<Topic>` block to the relevant `repo-mcp-tools/docker/amps/config*.xml`
+2. Add a publisher in `repo-local-dev/scripts/product_publishers.py`
+3. Create a connection card at `repo-rag-ingest/data/amps_connections/`
+4. Create a schema doc at `repo-rag-ingest/data/amps_schemas/`
+5. Re-ingest: `docker exec local-api-service python scripts/ingest_amps_schemas.py`
+
+---
+
+## Troubleshooting
+
+### OpenSearch exits with code 137 (OOM)
+
+Docker Desktop ran out of memory. Either:
+- Increase Docker Desktop RAM allocation to 5+ GB
+- Stop non-essential services (e.g. Langfuse observability stack)
+
+```bash
+docker compose -f repo-local-dev/docker-compose.observability.yml down
+```
+
+### AMPS containers fail to start
+
+Ensure `repo-mcp-tools/docker/amps/AMPS.tar` exists. The AMPS binary is proprietary
+and must be downloaded separately from [crankuptheamps.com/evaluate](https://crankuptheamps.com/evaluate).
+
+Without AMPS, the portfolio/CDS/ETF/risk agents still work using their POC static data
+via MCP tools (`portfolio_mcp_server.py`, `cds_mcp_server.py`, etc.).
+
+### api-service takes too long to start
+
+The first startup ingests RAG docs into OpenSearch and loads the sentence-transformer
+model (~400 MB). This can take 60–90 seconds. Subsequent starts are faster because
+documents are idempotently re-indexed (SHA256 doc ID — no duplicates).
+
+### Rate limit errors (Anthropic API)
+
+The system uses Haiku for the LLM Router (fast, cheap) and Sonnet for agent reasoning.
+If you hit rate limits, set `ANTHROPIC_FAST_MODEL=claude-haiku-4-5-20251001` and
+reduce concurrent agent calls by querying simpler (single-agent) questions first.

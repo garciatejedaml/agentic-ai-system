@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AMPS ETF Server — etf_nav
+
+  Instance: amps-etf
+  Ports (internal — Docker maps these to host):
+    8085  HTTP admin
+    9007  TCP JSON transport
+
+  Host port mapping (docker-compose.amps.yml):
+    8088  → 8085  (admin)
+    9010  → 9007  (TCP)
+
+  SOW Topics:
+    etf_nav → NAV, market price, premium/discount, AUM, intraday flows
+               (key: /ticker)
+
+  Publisher:  product_publishers.py  (AMPS_ETF_HOST / AMPS_ETF_PORT)
+  Data scope: 15 ETFs — HYG, JNK, LQD, EMB, TLT, AGG, BKLN, ANGL,
+                         FALN, HYDB, VCSH, VCIT, SHY, IEF, IGIB
+-->
+<AMPSConfig>
+  <Name>amps-etf</Name>
+
+  <Admin>
+    <InetAddr>0.0.0.0:8085</InetAddr>
+  </Admin>
+
+  <Transports>
+    <Transport>
+      <Name>tcp-json</Name>
+      <Type>tcp</Type>
+      <InetAddr>0.0.0.0:9007</InetAddr>
+      <MessageType>json</MessageType>
+    </Transport>
+  </Transports>
+
+  <SOW>
+    <Topic>
+      <Name>etf_nav</Name>
+      <MessageType>json</MessageType>
+      <Key>/ticker</Key>
+      <FileName>sow/etf_nav.sow</FileName>
+    </Topic>
+  </SOW>
+
+</AMPSConfig>

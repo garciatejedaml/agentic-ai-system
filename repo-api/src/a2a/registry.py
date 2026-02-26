@@ -97,3 +97,24 @@ def get_endpoint(agent_id: str, fallback: str) -> str:
     if item and item.get("status") == "healthy":
         return item["endpoint"]
     return fallback
+
+
+def list_all_agents() -> list[dict]:
+    """
+    Return all active agents from DynamoDB.
+
+    Used by the LLM Router (Phase 3) to build the dynamic list of available
+    agents and their capabilities for the routing prompt.
+
+    Returns only agents with status="healthy" and unexpired TTL.
+    """
+    try:
+        response = _table().scan()
+        now = int(time.time())
+        return [
+            item for item in response.get("Items", [])
+            if item.get("status") == "healthy" and item.get("ttl", 0) > now
+        ]
+    except (ClientError, BotoCoreError, Exception) as e:
+        print(f"[registry] WARNING: could not list agents: {e}")
+        return []

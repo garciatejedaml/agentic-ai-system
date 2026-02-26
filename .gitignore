@@ -41,6 +41,7 @@ repo-rag-ingest/data/kdb/*.csv
 /amps/
 repo-rag-ingest/amps/binaries/
 repo-rag-ingest/amps/client/*.zip
+repo-mcp-tools/amps/client/*.zip
 docker/amps/AMPS.tar
 docker/amps/*.tar
 docker/amps/*.tar.gz

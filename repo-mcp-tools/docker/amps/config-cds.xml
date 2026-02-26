@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AMPS CDS Server — cds_spreads
+
+  Instance: amps-cds
+  Ports (internal — Docker maps these to host):
+    8085  HTTP admin
+    9007  TCP JSON transport
+
+  Host port mapping (docker-compose.amps.yml):
+    8087  → 8085  (admin)
+    9009  → 9007  (TCP)
+
+  SOW Topics:
+    cds_spreads → CDS spread tick per reference entity + tenor
+                  (key: /entity_tenor_key = "{entity_slug}_{tenor}y")
+
+  Publisher:  product_publishers.py  (AMPS_CDS_HOST / AMPS_CDS_PORT)
+  Data scope: ~50 reference entities × 5 tenors (1/3/5/7/10y) = 250 records
+              Sectors: HY (Automotive, Airlines, Gaming), IG (Tech, Financials),
+                       EM (Sovereigns, Corporates)
+-->
+<AMPSConfig>
+  <Name>amps-cds</Name>
+
+  <Admin>
+    <InetAddr>0.0.0.0:8085</InetAddr>
+  </Admin>
+
+  <Transports>
+    <Transport>
+      <Name>tcp-json</Name>
+      <Type>tcp</Type>
+      <InetAddr>0.0.0.0:9007</InetAddr>
+      <MessageType>json</MessageType>
+    </Transport>
+  </Transports>
+
+  <SOW>
+    <Topic>
+      <Name>cds_spreads</Name>
+      <MessageType>json</MessageType>
+      <Key>/entity_tenor_key</Key>
+      <FileName>sow/cds_spreads.sow</FileName>
+    </Topic>
+  </SOW>
+
+</AMPSConfig>

@@ -21,8 +21,9 @@ class Config:
         "BEDROCK_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     )
 
-    # RAG
-    CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", ".chroma_db")
+    # RAG — OpenSearch backend
+    OPENSEARCH_URL: str = os.getenv("OPENSEARCH_URL", "http://localhost:9200")
+    OPENSEARCH_INDEX: str = os.getenv("OPENSEARCH_INDEX", "knowledge_base")
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
     RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", "4"))
 
@@ -63,12 +64,37 @@ class Config:
     FINANCIAL_ORCHESTRATOR_URL: str = os.getenv("FINANCIAL_ORCHESTRATOR_URL", "http://localhost:8003")
     A2A_TIMEOUT: int = int(os.getenv("A2A_TIMEOUT", "120"))
 
+    # A2A Phase 3 — new specialist agents
+    PORTFOLIO_AGENT_URL: str = os.getenv("PORTFOLIO_AGENT_URL", "http://localhost:8004")
+    CDS_AGENT_URL: str = os.getenv("CDS_AGENT_URL", "http://localhost:8005")
+    ETF_AGENT_URL: str = os.getenv("ETF_AGENT_URL", "http://localhost:8006")
+    RISK_PNL_AGENT_URL: str = os.getenv("RISK_PNL_AGENT_URL", "http://localhost:8007")
+
+    # Phase 3 — new product enablement flags
+    PORTFOLIO_ENABLED: bool = os.getenv("PORTFOLIO_ENABLED", "true").lower() == "true"
+    CDS_ENABLED: bool = os.getenv("CDS_ENABLED", "true").lower() == "true"
+    ETF_ENABLED: bool = os.getenv("ETF_ENABLED", "true").lower() == "true"
+
     # Debug
     LANGGRAPH_DEBUG: bool = os.getenv("LANGGRAPH_DEBUG", "false").lower() == "true"
 
     @classmethod
     def is_local(cls) -> bool:
         return cls.LLM_PROVIDER == "anthropic"
+
+    @classmethod
+    def get_agent_url(cls, agent_id: str) -> str:
+        """Fallback URL by agent_id when DynamoDB discovery fails."""
+        _map = {
+            "kdb-agent": cls.KDB_AGENT_URL,
+            "amps-agent": cls.AMPS_AGENT_URL,
+            "financial-orchestrator": cls.FINANCIAL_ORCHESTRATOR_URL,
+            "portfolio-agent": cls.PORTFOLIO_AGENT_URL,
+            "cds-agent": cls.CDS_AGENT_URL,
+            "etf-agent": cls.ETF_AGENT_URL,
+            "risk-pnl-agent": cls.RISK_PNL_AGENT_URL,
+        }
+        return _map.get(agent_id, f"http://{agent_id}:8000")
 
     @classmethod
     def validate(cls) -> None:

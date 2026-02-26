@@ -32,11 +32,19 @@ def intake_node(state: AgentState) -> dict:
 
 def retrieve_node(state: AgentState) -> dict:
     """
-    Query ChromaDB and attach the top-k relevant document chunks to state.
-    This runs *before* the Strands agents so they receive pre-fetched context.
+    Query the knowledge base and attach the top-k relevant document chunks to state.
+    Skipped for financial queries — specialist agents and amps-agent do their own RAG.
     """
     if state.get("error"):
         return {}
+
+    # Financial queries are handled by the LLM Router → specialist agents.
+    # Each agent (esp. amps-agent) runs its own search_knowledge_base call.
+    # Skip in-process retrieval here to avoid loading SentenceTransformer
+    # twice and spiking memory in the api-service worker.
+    from src.agents.orchestrator import _is_financial_query
+    if _is_financial_query(state.get("query", "")):
+        return {"rag_context": []}
 
     try:
         retriever = get_retriever()

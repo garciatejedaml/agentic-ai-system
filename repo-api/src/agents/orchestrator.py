@@ -4,7 +4,8 @@ Strands Multi-Agent Orchestrator
 Entry point called by LangGraph. Routes queries to the appropriate pipeline:
 
   Financial queries (trading, AMPS, KDB, bonds, RFQ, desk, spread)
-    → Financial Orchestrator (KDB Agent + AMPS Agent + RAG)
+    → Phase 3: LLM Router → parallel specialist agents
+    → Phase 2 fallback: Financial Orchestrator (KDB Agent + AMPS Agent + RAG)
 
   General queries (everything else)
     → General pipeline (Researcher + Synthesizer)
@@ -70,12 +71,13 @@ def run_strands_orchestrator(query: str, rag_context: list[dict]) -> Orchestrato
 # ── Financial pipeline ────────────────────────────────────────────────────────
 
 def _run_financial(query: str, rag_context: list[dict]) -> OrchestratorResult:
-    """Route to the Financial Orchestrator (KDB + AMPS + RAG).
+    """Route to the financial pipeline.
 
-    Phase 2: calls the Financial Orchestrator via A2A HTTP if
-    FINANCIAL_ORCHESTRATOR_URL is set to a remote service.
-    Falls back to in-process call (Phase 1 behavior) when running
-    the monolith (AGENT_SERVICE not set or AGENT_SERVICE=api).
+    Phase 3 (default): LLM Router reads DynamoDB, picks specialist agents,
+    calls them in parallel or sequentially via A2A HTTP.
+
+    Phase 2 fallback: delegates to financial-orchestrator service.
+    Phase 1 fallback: in-process call.
     """
     import os
     from src.agents.synthesizer import create_synthesizer
@@ -84,23 +86,49 @@ def _run_financial(query: str, rag_context: list[dict]) -> OrchestratorResult:
     if rag_context:
         rag_text = "\n\n".join(f"[{i+1}] {doc['text']}" for i, doc in enumerate(rag_context))
 
-    print(f"[Orchestrator] Route → Financial (KDB + AMPS + RAG)")
+    full_query = query
+    if rag_text:
+        full_query = f"{query}\n\n[Pre-retrieved knowledge base context]\n{rag_text}"
 
-    # Phase 2: delegate to Financial Orchestrator service via A2A HTTP
+    print(f"[Orchestrator] Route → Financial (Phase 3 LLM Router)")
+
     agent_service = os.getenv("AGENT_SERVICE", "")
+
+    # ── Phase 3: LLM Router + parallel/sequential specialist agents ───────────
+    if agent_service == "api":
+        from src.agents.llm_router import route_query
+        from src.a2a.parallel_client import call_agents_parallel_sync
+
+        decision = route_query(query)
+
+        if decision.strategy == "sequential":
+            # Sequential: call agents one by one (risk-pnl handles internal sequencing)
+            results: dict[str, str] = {}
+            for agent_id in decision.agents:
+                results.update(call_agents_parallel_sync([agent_id], full_query))
+        else:
+            # Parallel: all agents called concurrently
+            results = call_agents_parallel_sync(decision.agents, full_query)
+
+        if len(results) == 1:
+            research_text = list(results.values())[0]
+        else:
+            research_text = _merge_parallel_results(query, results)
+
+        return OrchestratorResult(research=research_text, synthesis=research_text, route="financial")
+
+    # ── Phase 2 fallback: financial-orchestrator via A2A ──────────────────────
     fin_url = os.getenv("FINANCIAL_ORCHESTRATOR_URL", "")
-    if agent_service == "api" and fin_url:
+    if fin_url:
         from src.a2a.client import call_agent_sync
         from src.a2a.registry import get_endpoint
         endpoint = get_endpoint("financial-orchestrator", fin_url)
-        full_query = query
-        if rag_text:
-            full_query = f"{query}\n\n[Pre-retrieved knowledge base context]\n{rag_text}"
         research_text = call_agent_sync(endpoint, full_query)
-    else:
-        # Phase 1 fallback: in-process call
-        from src.agents.financial_orchestrator import run_financial_orchestrator
-        research_text = run_financial_orchestrator(query, rag_context=rag_text)
+        return OrchestratorResult(research=research_text, synthesis=research_text, route="financial")
+
+    # ── Phase 1 fallback: in-process ──────────────────────────────────────────
+    from src.agents.financial_orchestrator import run_financial_orchestrator
+    research_text = run_financial_orchestrator(query, rag_context=rag_text)
 
     synthesizer = create_synthesizer()
     synthesis_prompt = (
@@ -109,8 +137,17 @@ def _run_financial(query: str, rag_context: list[dict]) -> OrchestratorResult:
         "Please synthesize a clear, structured answer focused on actionable insights."
     )
     synthesis_text = str(synthesizer(synthesis_prompt))
-
     return OrchestratorResult(research=research_text, synthesis=synthesis_text, route="financial")
+
+
+def _merge_parallel_results(query: str, results: dict[str, str]) -> str:
+    """Merge N agent results into one structured response with per-agent sections."""
+    sections = []
+    for agent_id, result in results.items():
+        header = agent_id.replace("-", " ").title()
+        sections.append(f"## {header}\n\n{result}")
+    merged = "\n\n---\n\n".join(sections)
+    return f"# Multi-Source Financial Analysis\n\nQuery: {query}\n\n{merged}"
 
 
 # ── General pipeline ──────────────────────────────────────────────────────────

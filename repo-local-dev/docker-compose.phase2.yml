@@ -35,6 +35,11 @@ x-common-env: &common-env
   KDB_MODE: poc
   KDB_DATA_PATH: /app/data/kdb
   AMPS_ENABLED: "false"
+  OBSERVABILITY_ENABLED: "true"
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+  LANGFUSE_HOST: http://langfuse-web:3000
+  PHOENIX_ENDPOINT: http://phoenix:6006
 
 x-agent-base: &agent-base
   build:
@@ -42,6 +47,9 @@ x-agent-base: &agent-base
     dockerfile: repo-api/Dockerfile
   entrypoint: ["/phase2_entrypoint.sh"]
   restart: unless-stopped
+  networks:
+    - default
+    - observability
   depends_on:
     localstack:
       condition: service_healthy
@@ -149,6 +157,9 @@ services:
       - "8000:8000"
     volumes:
       - chroma_phase2_data:/data/chroma_db
+    networks:
+      - default
+      - observability
     depends_on:
       localstack:
         condition: service_healthy
@@ -164,3 +175,9 @@ services:
 volumes:
   localstack_phase2_data:
   chroma_phase2_data:
+
+networks:
+  default: {}
+  observability:
+    external: true
+    name: agentic-ai-observability_observability

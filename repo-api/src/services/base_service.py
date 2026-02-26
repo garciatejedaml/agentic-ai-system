@@ -38,6 +38,7 @@ from src.a2a.models import (
     HealthResponse,
 )
 from src.a2a.registry import deregister_agent, register_agent
+from src.observability import setup_observability
 
 
 def create_agent_app(
@@ -66,6 +67,7 @@ def create_agent_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator:
+        setup_observability()
         # Graceful startup: DynamoDB may not be ready immediately.
         # The /health endpoint renews the TTL on each call, so eventual
         # registration is guaranteed once the registry becomes available.

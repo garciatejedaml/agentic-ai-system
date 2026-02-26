@@ -20,7 +20,7 @@ from strands import Agent, tool
 
 from src.a2a.client import call_agent_sync
 from src.a2a.registry import get_endpoint
-from src.agents.model_factory import get_strands_model
+from src.agents.model_factory import get_strands_fast_model
 from src.agents.tools import search_knowledge_base, summarize_findings
 
 _SYSTEM_PROMPT = """You are a Senior Bond Trading Analyst with access to three data sources:
@@ -142,7 +142,7 @@ def run_financial_orchestrator_v2(query: str, rag_context: str = "") -> str:
         )
 
     agent = Agent(
-        model=get_strands_model(),
+        model=get_strands_fast_model(),
         system_prompt=_SYSTEM_PROMPT,
         tools=[
             query_kdb_history,

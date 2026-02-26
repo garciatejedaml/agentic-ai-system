@@ -69,6 +69,9 @@ services:
       - langfuse_ch_data:/var/lib/clickhouse
       - langfuse_ch_logs:/var/log/clickhouse-server
       - ./docker/clickhouse/keeper.xml:/etc/clickhouse-server/config.d/keeper.xml:ro
+      - ./docker/clickhouse/macros.xml:/etc/clickhouse-server/config.d/macros.xml:ro
+      - ./docker/clickhouse/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+      - ./docker/clickhouse/zookeeper.xml:/etc/clickhouse-server/config.d/zookeeper.xml:ro
     ports:
       - "9181:9181"   # ClickHouse Keeper
     healthcheck:

@@ -1,0 +1,364 @@
+# ── Phase 3: LLM Router + Parallel Specialist Agents ─────────────────────────
+#
+# Extends Phase 2 with 4 new specialist agents, OpenSearch RAG, and a
+# product-publisher for live AMPS simulation. The api-service routes through
+# the LLM Router (1 Haiku call) → parallel A2A calls to specialists.
+#
+# Services:
+#   localstack              :4566   AWS DynamoDB emulation (agent registry)
+#   opensearch              :9200   OpenSearch k-NN vector store (RAG backend)
+#   kdb-agent               :8001   KDB Historical Bond RFQ Analytics
+#   amps-agent              :8002   AMPS Real-Time Market Data
+#   financial-orchestrator  :8003   Legacy Phase 2 orchestrator (kept for fallback)
+#   portfolio-agent         :8004   Portfolio Holdings & Exposure (NEW)
+#   cds-agent               :8005   CDS Spreads & Term Structures (NEW)
+#   etf-agent               :8006   ETF NAV, Flows & Basket (NEW)
+#   risk-pnl-agent          :8007   VaR, DV01, CS01, P&L Attribution (NEW)
+#   api-service             :8000   FastAPI + LangGraph gateway (LLM Router enabled)
+#   product-publisher       —       AMPS simulator: portfolio_nav/cds_spreads/etf_nav/risk_metrics
+#
+# Usage (from monorepo root):
+#   docker compose -f repo-local-dev/docker-compose.phase3.yml build
+#   docker compose -f repo-local-dev/docker-compose.phase3.yml --env-file .env up -d
+#
+# Run AMPS separately first (needed for product-publisher):
+#   docker compose -f repo-local-dev/docker-compose.amps.yml up -d
+#
+# Verify:
+#   for p in 8001 8002 8004 8005 8006 8007; do
+#     echo "=== Port $p ===" && curl -s http://localhost:$p/.well-known/agent.json | python3 -m json.tool | grep '"name"'
+#   done
+#   curl -s http://localhost:9200/_cluster/health | python3 -m json.tool
+
+name: agentic-ai-phase3
+
+x-common-env: &common-env
+  LLM_PROVIDER: anthropic
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+  ANTHROPIC_FAST_MODEL: ${ANTHROPIC_FAST_MODEL:-claude-haiku-4-5-20251001}
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_ENDPOINT_URL: http://localstack:4566
+  AGENT_REGISTRY_TABLE: agentic-ai-staging-agent-registry
+  KDB_ENABLED: "true"
+  KDB_MODE: poc
+  KDB_DATA_PATH: /app/data/kdb
+  AMPS_ENABLED: "false"
+  PORTFOLIO_ENABLED: "true"
+  CDS_ENABLED: "true"
+  ETF_ENABLED: "true"
+  OPENSEARCH_URL: http://opensearch:9200
+  OPENSEARCH_INDEX: knowledge_base
+  OBSERVABILITY_ENABLED: "true"
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+  LANGFUSE_HOST: http://langfuse-web:3000
+  PHOENIX_ENDPOINT: http://phoenix:6006
+
+x-agent-base: &agent-base
+  build:
+    context: ..
+    dockerfile: repo-api/Dockerfile
+  image: agentic-ai-phase3:latest           # reuse pre-built image; rebuild with: docker build -f repo-api/Dockerfile
+  entrypoint: ["/phase3_entrypoint.sh"]
+  restart: unless-stopped
+  networks:
+    - default
+    - observability
+  depends_on:
+    localstack:
+      condition: service_healthy
+
+services:
+
+  # ── LocalStack — AWS DynamoDB emulation ──────────────────────────────────────
+  localstack:
+    image: localstack/localstack:3.4
+    container_name: localstack-phase3
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs,dynamodb,secretsmanager,s3,logs,ecr
+      - DEBUG=0
+      - DATA_DIR=/var/lib/localstack/data
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - localstack_phase3_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/localstack_init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ── OpenSearch — k-NN vector store for RAG ────────────────────────────────────
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    container_name: opensearch-phase3
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_JAVA_OPTS=-Xms128m -Xmx128m
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch_phase3_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9200/_cluster/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ── KDB Agent — Historical Bond RFQ Analytics ────────────────────────────────
+  kdb-agent:
+    <<: *agent-base
+    container_name: kdb-agent-phase3
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: kdb
+      AGENT_PORT: "8001"
+      KDB_AGENT_ENDPOINT: http://kdb-agent:8001
+      SKIP_INGEST: "true"
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── AMPS Agent — Real-Time Market Data ───────────────────────────────────────
+  amps-agent:
+    <<: *agent-base
+    container_name: amps-agent-phase3
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: amps
+      AGENT_PORT: "8002"
+      AMPS_AGENT_ENDPOINT: http://amps-agent:8002
+      SKIP_INGEST: "true"
+      # Enable AMPS with multi-instance routing (one per product topic)
+      AMPS_ENABLED: "true"
+      AMPS_HOST: host.docker.internal
+      AMPS_PORT: "9007"        # amps-core: positions, orders, market-data
+      AMPS_ADMIN_PORT: "8085"
+      AMPS_TOPIC_ROUTE_portfolio_nav: host.docker.internal:9008
+      AMPS_TOPIC_ROUTE_cds_spreads: host.docker.internal:9009
+      AMPS_TOPIC_ROUTE_etf_nav: host.docker.internal:9010
+      AMPS_TOPIC_ROUTE_risk_metrics: host.docker.internal:9011
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Financial Orchestrator — Phase 2 legacy (kept for fallback) ──────────────
+  financial-orchestrator:
+    <<: *agent-base
+    container_name: financial-orchestrator-phase3
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: financial_orchestrator
+      AGENT_PORT: "8003"
+      FINANCIAL_ORCHESTRATOR_ENDPOINT: http://financial-orchestrator:8003
+      KDB_AGENT_URL: http://kdb-agent:8001
+      AMPS_AGENT_URL: http://amps-agent:8002
+      SKIP_INGEST: "true"
+    ports:
+      - "8003:8003"
+    depends_on:
+      localstack:
+        condition: service_healthy
+      kdb-agent:
+        condition: service_healthy
+      amps-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Portfolio Agent — Holdings & Exposure (NEW Phase 3) ──────────────────────
+  portfolio-agent:
+    <<: *agent-base
+    container_name: portfolio-agent-phase3
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: portfolio
+      AGENT_PORT: "8004"
+      PORTFOLIO_AGENT_ENDPOINT: http://portfolio-agent:8004
+      SKIP_INGEST: "true"
+    ports:
+      - "8004:8004"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── CDS Agent — Credit Default Swap Market Data (NEW Phase 3) ────────────────
+  cds-agent:
+    <<: *agent-base
+    container_name: cds-agent-phase3
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: cds
+      AGENT_PORT: "8005"
+      CDS_AGENT_ENDPOINT: http://cds-agent:8005
+      SKIP_INGEST: "true"
+    ports:
+      - "8005:8005"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── ETF Agent — NAV, Flows & Basket Composition (NEW Phase 3) ────────────────
+  etf-agent:
+    <<: *agent-base
+    container_name: etf-agent-phase3
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: etf
+      AGENT_PORT: "8006"
+      ETF_AGENT_ENDPOINT: http://etf-agent:8006
+      SKIP_INGEST: "true"
+    ports:
+      - "8006:8006"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Risk & P&L Agent — VaR, DV01, CS01 (NEW Phase 3, cross-cutting) ─────────
+  risk-pnl-agent:
+    <<: *agent-base
+    container_name: risk-pnl-agent-phase3
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: risk_pnl
+      AGENT_PORT: "8007"
+      RISK_PNL_AGENT_ENDPOINT: http://risk-pnl-agent:8007
+      # risk-pnl makes internal A2A calls to these agents
+      PORTFOLIO_AGENT_URL: http://portfolio-agent:8004
+      KDB_AGENT_URL: http://kdb-agent:8001
+      SKIP_INGEST: "true"
+    ports:
+      - "8007:8007"
+    depends_on:
+      localstack:
+        condition: service_healthy
+      portfolio-agent:
+        condition: service_healthy
+      kdb-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── API Service — LangGraph + LLM Router (Phase 3) ───────────────────────────
+  api-service:
+    <<: *agent-base
+    container_name: api-service-phase3
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: api
+      SKIP_INGEST: "true"   # docs already seeded in opensearch_phase3_data volume
+      # Phase 3: LLM Router routes to specialist agents directly
+      KDB_AGENT_URL: http://kdb-agent:8001
+      AMPS_AGENT_URL: http://amps-agent:8002
+      PORTFOLIO_AGENT_URL: http://portfolio-agent:8004
+      CDS_AGENT_URL: http://cds-agent:8005
+      ETF_AGENT_URL: http://etf-agent:8006
+      RISK_PNL_AGENT_URL: http://risk-pnl-agent:8007
+      # Keep Phase 2 URL for fallback (not used in Phase 3 primary path)
+      FINANCIAL_ORCHESTRATOR_URL: http://financial-orchestrator:8003
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+    ports:
+      - "8000:8000"
+    networks:
+      - default
+      - observability
+    depends_on:
+      localstack:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      kdb-agent:
+        condition: service_healthy
+      amps-agent:
+        condition: service_healthy
+      portfolio-agent:
+        condition: service_healthy
+      cds-agent:
+        condition: service_healthy
+      etf-agent:
+        condition: service_healthy
+      risk-pnl-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ── Product Publisher — AMPS live data simulator (Phase 3) ───────────────────
+  # Publishes portfolio_nav, cds_spreads, etf_nav, risk_metrics every ~7 seconds.
+  # Requires AMPS server (run docker-compose.amps.yml first).
+  # Set AMPS_HOST to the AMPS container hostname or host.docker.internal for local.
+  product-publisher:
+    build:
+      context: ..
+      dockerfile: repo-api/Dockerfile
+    image: agentic-ai-phase3:latest
+    container_name: product-publisher-phase3
+    entrypoint: ["python", "scripts/product_publishers.py"]
+    working_dir: /app
+    environment:
+      # Product publishers connect to the AMPS stack (docker-compose.amps.yml)
+      # Each product AMPS instance is accessible via host.docker.internal on its host port
+      AMPS_PORTFOLIO_HOST: ${AMPS_PORTFOLIO_HOST:-host.docker.internal}
+      AMPS_PORTFOLIO_PORT: ${AMPS_PORTFOLIO_PORT:-9008}
+      AMPS_CDS_HOST: ${AMPS_CDS_HOST:-host.docker.internal}
+      AMPS_CDS_PORT: ${AMPS_CDS_PORT:-9009}
+      AMPS_ETF_HOST: ${AMPS_ETF_HOST:-host.docker.internal}
+      AMPS_ETF_PORT: ${AMPS_ETF_PORT:-9010}
+      AMPS_RISK_HOST: ${AMPS_RISK_HOST:-host.docker.internal}
+      AMPS_RISK_PORT: ${AMPS_RISK_PORT:-9011}
+      MODE: both
+      TICK_INTERVAL: "7"
+    volumes:
+      - ./scripts/product_publishers.py:/app/scripts/product_publishers.py:ro
+    restart: on-failure
+
+volumes:
+  localstack_phase3_data:
+  opensearch_phase3_data:
+
+networks:
+  default: {}
+  observability:
+    external: true
+    name: agentic-ai-observability_observability

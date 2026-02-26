@@ -188,3 +188,93 @@ def open_kdb_tools():
         tools = client.list_tools_sync()
         print(f"[MCP] KDB: {len(tools)} tools loaded.")
         yield tools
+
+
+def _portfolio_client() -> MCPClient:
+    """Portfolio MCP – portfolio holdings and exposure analytics."""
+    server_script = os.path.join(_MCP_SERVER_DIR, "portfolio_mcp_server.py")
+    return MCPClient(
+        lambda: stdio_client(
+            StdioServerParameters(
+                command=sys.executable,
+                args=[server_script],
+                env={**os.environ},
+            )
+        )
+    )
+
+
+def _cds_client() -> MCPClient:
+    """CDS MCP – Credit Default Swap market data and term structures."""
+    server_script = os.path.join(_MCP_SERVER_DIR, "cds_mcp_server.py")
+    return MCPClient(
+        lambda: stdio_client(
+            StdioServerParameters(
+                command=sys.executable,
+                args=[server_script],
+                env={**os.environ},
+            )
+        )
+    )
+
+
+def _etf_client() -> MCPClient:
+    """ETF MCP – NAV, AUM, flows, and basket composition analytics."""
+    server_script = os.path.join(_MCP_SERVER_DIR, "etf_mcp_server.py")
+    return MCPClient(
+        lambda: stdio_client(
+            StdioServerParameters(
+                command=sys.executable,
+                args=[server_script],
+                env={**os.environ},
+            )
+        )
+    )
+
+
+@contextmanager
+def open_portfolio_tools():
+    """Context manager that opens only the Portfolio MCP client.
+    Controlled by PORTFOLIO_ENABLED env var (default: true).
+    """
+    if os.environ.get("PORTFOLIO_ENABLED", "true").lower() != "true":
+        print("[MCP] Portfolio disabled – set PORTFOLIO_ENABLED=true to enable.")
+        yield []
+        return
+    client = _portfolio_client()
+    with client:
+        tools = client.list_tools_sync()
+        print(f"[MCP] Portfolio: {len(tools)} tools loaded.")
+        yield tools
+
+
+@contextmanager
+def open_cds_tools():
+    """Context manager that opens only the CDS MCP client.
+    Controlled by CDS_ENABLED env var (default: true).
+    """
+    if os.environ.get("CDS_ENABLED", "true").lower() != "true":
+        print("[MCP] CDS disabled – set CDS_ENABLED=true to enable.")
+        yield []
+        return
+    client = _cds_client()
+    with client:
+        tools = client.list_tools_sync()
+        print(f"[MCP] CDS: {len(tools)} tools loaded.")
+        yield tools
+
+
+@contextmanager
+def open_etf_tools():
+    """Context manager that opens only the ETF MCP client.
+    Controlled by ETF_ENABLED env var (default: true).
+    """
+    if os.environ.get("ETF_ENABLED", "true").lower() != "true":
+        print("[MCP] ETF disabled – set ETF_ENABLED=true to enable.")
+        yield []
+        return
+    client = _etf_client()
+    with client:
+        tools = client.list_tools_sync()
+        print(f"[MCP] ETF: {len(tools)} tools loaded.")
+        yield tools

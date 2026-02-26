@@ -168,6 +168,53 @@ async def _stream_response(content: str, model: str, session_id: str):
     yield "data: [DONE]\n\n"
 
 
+async def _stream_response_live(
+    enriched_query: str,
+    user_message: str,
+    model: str,
+    session_id: str,
+    user_id: str,
+    desk_name: str,
+):
+    """Stream that sends the first chunk immediately, then runs the agent.
+
+    Fixes the 'generating...' hang in clients like continue.dev that have a
+    short time-to-first-token deadline: the role chunk arrives instantly so
+    the client knows the connection is alive while the agent thinks.
+    """
+    from src.api.sessions import save_session
+
+    chunk_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+    created = int(time.time())
+
+    # ── 1. Send role chunk immediately so the client sees activity ───────────
+    yield f"data: {json.dumps({'id': chunk_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model, 'session_id': session_id, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+
+    # ── 2. Run the agent pipeline while the SSE connection is held open ──────
+    loop = asyncio.get_running_loop()
+    content = await loop.run_in_executor(_executor, _run_agent, enriched_query)
+
+    # ── 3. Stream content word-by-word ───────────────────────────────────────
+    words = content.split(" ")
+    for i, word in enumerate(words):
+        text = word if i == 0 else " " + word
+        chunk = {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
+        }
+        yield f"data: {json.dumps(chunk)}\n\n"
+        await asyncio.sleep(0.01)
+
+    yield f"data: {json.dumps({'id': chunk_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+    yield "data: [DONE]\n\n"
+
+    # ── 4. Persist session after response is fully sent ──────────────────────
+    loop.run_in_executor(_executor, save_session, session_id, user_message, content, user_id, desk_name)
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -231,26 +278,28 @@ async def chat_completions(request: ChatRequest):
     else:
         enriched_query = user_message
 
-    # ── 4. Run agent pipeline (synchronous, offloaded to thread pool) ────────
+    # ── 4. Streaming: return immediately; agent runs inside the generator ────
+    if request.stream:
+        return StreamingResponse(
+            _stream_response_live(
+                enriched_query, user_message, request.model,
+                session_id, user_id, desk_name,
+            ),
+            media_type="text/event-stream",
+        )
+
+    # ── 5. Non-streaming: run agent then return full response ────────────────
     loop = asyncio.get_event_loop()
     content = await loop.run_in_executor(_executor, _run_agent, enriched_query)
 
-    # ── 5. Persist session (fire-and-forget via executor to not block response) ──
     loop.run_in_executor(
         _executor,
         save_session,
         session_id,
-        user_message,   # store the original message, not the enriched one
+        user_message,
         content,
         user_id,
         desk_name,
     )
-
-    # ── 6. Return response with session_id ───────────────────────────────────
-    if request.stream:
-        return StreamingResponse(
-            _stream_response(content, request.model, session_id),
-            media_type="text/event-stream",
-        )
 
     return _build_response(content, request.model, session_id)

@@ -25,9 +25,8 @@ mcp>=1.0.0
 duckdb>=1.0.0              # POC mode backend (no license needed)
 # pykx>=2.5.0              # Server mode: pip install pykx (requires kx.com license)
 
-# RAG
-chromadb>=0.5.0
-langchain-chroma>=0.1.4
+# RAG — OpenSearch backend
+opensearch-py>=2.4.0          # OpenSearch Python client (replaces chromadb)
 sentence-transformers>=3.0.0  # Local embeddings (offline-capable)
 
 # Utils

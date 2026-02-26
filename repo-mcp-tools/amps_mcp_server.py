@@ -47,26 +47,54 @@ AMPS_CLIENT_NAME = os.getenv("AMPS_CLIENT_NAME", "agentic-ai-system")
 AMPS_TCP_URL = f"tcp://{AMPS_HOST}:{AMPS_PORT}/amps/json"
 AMPS_ADMIN_URL = f"http://{AMPS_HOST}:{AMPS_ADMIN_PORT}"
 
+# Per-topic routing: AMPS_TOPIC_ROUTE_<topic>=host:port
+# Allows one amps-agent to cover multiple AMPS instances (one per product).
+# Example: AMPS_TOPIC_ROUTE_portfolio_nav=host.docker.internal:9008
+_TOPIC_ROUTES: dict[str, tuple[str, int]] = {}
+for _k, _v in os.environ.items():
+    if _k.startswith("AMPS_TOPIC_ROUTE_"):
+        _topic = _k[len("AMPS_TOPIC_ROUTE_"):]
+        _host, _, _port = _v.rpartition(":")
+        _TOPIC_ROUTES[_topic] = (_host, int(_port) if _port else 9007)
+
 # ── AMPS helpers ───────────────────────────────────────────────────────────────
 
-def _get_amps_client():
-    """Create and return a connected AMPS client."""
+def _get_amps_client(topic: str | None = None,
+                     host: str | None = None,
+                     port: int | None = None):
+    """Create and return a connected AMPS client.
+
+    Resolution order for host/port:
+      1. Explicit host/port args (passed by LLM from RAG knowledge)
+      2. Per-topic env-var routing (_TOPIC_ROUTES) — fallback when RAG is unavailable
+      3. Default AMPS_HOST / AMPS_PORT
+    """
     try:
         from AMPS import Client
     except ImportError:
         raise RuntimeError(
             "amps-python-client not installed. Run: pip install amps-python-client"
         )
-    client = Client(AMPS_CLIENT_NAME)
-    client.connect(AMPS_TCP_URL)
+    if host and port:
+        tcp_url = f"tcp://{host}:{port}/amps/json"
+        client_name = f"{AMPS_CLIENT_NAME}-{topic or 'explicit'}"
+    elif topic and topic in _TOPIC_ROUTES:
+        h, p = _TOPIC_ROUTES[topic]
+        tcp_url = f"tcp://{h}:{p}/amps/json"
+        client_name = f"{AMPS_CLIENT_NAME}-{topic}"
+    else:
+        tcp_url = AMPS_TCP_URL
+        client_name = AMPS_CLIENT_NAME
+    client = Client(client_name)
+    client.connect(tcp_url)
     client.logon()
     return client
 
 
-def _fetch_admin(path: str) -> dict:
+def _fetch_admin(path: str, admin_url: str | None = None) -> dict:
     """Fetch a JSON endpoint from the AMPS HTTP admin interface."""
     import urllib.request
-    url = f"{AMPS_ADMIN_URL}{path}"
+    url = f"{admin_url or AMPS_ADMIN_URL}{path}"
     try:
         with urllib.request.urlopen(url, timeout=5) as resp:
             return json.loads(resp.read().decode())
@@ -98,25 +126,43 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="amps_list_topics",
             description=(
-                "List all topics available on the AMPS server (/topics.json). "
+                "List all topics available on an AMPS server (/topics.json). "
                 "Returns topic names, message types, SOW status, message counts, "
-                "and throughput statistics."
+                "and throughput statistics. "
+                "Use host/port to query a specific AMPS instance when the topic's "
+                "connection info is not in the knowledge base."
             ),
-            inputSchema={"type": "object", "properties": {}, "required": []},
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "AMPS server host to query (default: configured AMPS_HOST). "
+                                       "Use this to discover topics on a specific instance.",
+                    },
+                    "admin_port": {
+                        "type": "integer",
+                        "description": "AMPS HTTP admin port (default: configured AMPS_ADMIN_PORT, usually 8085).",
+                    },
+                },
+                "required": [],
+            },
         ),
         types.Tool(
             name="amps_subscribe",
             description=(
                 "Subscribe to an AMPS topic and collect messages. "
                 "Use this to get a sample of real-time messages flowing through a topic. "
-                "Optionally filter messages using AMPS content filter syntax (e.g. /price > 100)."
+                "Optionally filter messages using AMPS content filter syntax (e.g. /price > 100). "
+                "Provide host/port if the topic lives on a specific AMPS instance "
+                "(look up connection info in the knowledge base first)."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "topic": {
                         "type": "string",
-                        "description": "AMPS topic name to subscribe to (e.g. 'positions', 'orders')",
+                        "description": "AMPS topic name to subscribe to (e.g. 'positions', 'portfolio_nav')",
                     },
                     "filter": {
                         "type": "string",
@@ -128,6 +174,14 @@ async def list_tools() -> list[types.Tool]:
                         "description": "Maximum number of messages to collect before returning (default: 10)",
                         "default": 10,
                     },
+                    "host": {
+                        "type": "string",
+                        "description": "Override AMPS host for this call (from knowledge base or amps_list_topics discovery).",
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": "Override AMPS TCP port for this call.",
+                    },
                 },
                 "required": ["topic"],
             },
@@ -138,19 +192,31 @@ async def list_tools() -> list[types.Tool]:
                 "Query the AMPS State-of-World (SOW) for a topic. "
                 "Returns the latest/current state of all records in the topic "
                 "(like a snapshot of the current data). "
-                "Optionally filter results using AMPS content filter syntax."
+                "Optionally filter results using AMPS content filter syntax. "
+                "IMPORTANT: First search the knowledge base for the topic's connection info "
+                "(host and port). If not found, use amps_list_topics to discover available topics."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "topic": {
                         "type": "string",
-                        "description": "SOW-enabled AMPS topic to query (e.g. 'positions', 'orders')",
+                        "description": "SOW-enabled AMPS topic to query (e.g. 'positions', 'portfolio_nav', 'cds_spreads')",
                     },
                     "filter": {
                         "type": "string",
-                        "description": "Optional content filter (e.g. '/quantity > 0'). Leave empty for all records.",
+                        "description": "Optional content filter (e.g. '/portfolio_id = \"HY_MAIN\"'). Leave empty for all records.",
                         "default": "",
+                    },
+                    "host": {
+                        "type": "string",
+                        "description": "AMPS host for this topic (from knowledge base). "
+                                       "Example: 'host.docker.internal'. Leave empty to use env default or topic routing.",
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": "AMPS TCP port for this topic (from knowledge base). "
+                                       "Example: 9008 for portfolio_nav, 9009 for cds_spreads, 9010 for etf_nav, 9011 for risk_metrics.",
                     },
                 },
                 "required": ["topic"],
@@ -198,7 +264,15 @@ async def _dispatch(name: str, args: dict) -> str:
         return _format_json(data)
 
     if name == "amps_list_topics":
-        data = await loop.run_in_executor(None, _fetch_admin, "/topics.json")
+        host = args.get("host")
+        admin_port = args.get("admin_port")
+        if host or admin_port:
+            admin_url = f"http://{host or AMPS_HOST}:{admin_port or AMPS_ADMIN_PORT}"
+            data = await loop.run_in_executor(
+                None, lambda: _fetch_admin("/topics.json", admin_url)
+            )
+        else:
+            data = await loop.run_in_executor(None, _fetch_admin, "/topics.json")
         return _format_json(data)
 
     if name == "amps_subscribe":
@@ -208,6 +282,8 @@ async def _dispatch(name: str, args: dict) -> str:
             args["topic"],
             args.get("filter", ""),
             int(args.get("max_messages", 10)),
+            args.get("host"),
+            args.get("port"),
         )
 
     if name == "amps_sow_query":
@@ -216,6 +292,8 @@ async def _dispatch(name: str, args: dict) -> str:
             _sow_query,
             args["topic"],
             args.get("filter", ""),
+            args.get("host"),
+            args.get("port"),
         )
 
     if name == "amps_publish":
@@ -231,7 +309,8 @@ async def _dispatch(name: str, args: dict) -> str:
 
 # ── AMPS tool implementations (synchronous, run in executor) ───────────────────
 
-def _subscribe(topic: str, filter: str = "", max_messages: int = 10) -> str:
+def _subscribe(topic: str, filter: str = "", max_messages: int = 10,
+               host: str | None = None, port: int | None = None) -> str:
     """Subscribe to a topic and collect up to max_messages."""
     try:
         from AMPS import Client, Command
@@ -241,7 +320,7 @@ def _subscribe(topic: str, filter: str = "", max_messages: int = 10) -> str:
     messages = []
     client = None
     try:
-        client = _get_amps_client()
+        client = _get_amps_client(topic, host, port)
         cmd = Command("subscribe").set_topic(topic)
         if filter:
             cmd.set_filter(filter)
@@ -272,7 +351,8 @@ def _subscribe(topic: str, filter: str = "", max_messages: int = 10) -> str:
                 pass
 
 
-def _sow_query(topic: str, filter: str = "") -> str:
+def _sow_query(topic: str, filter: str = "",
+               host: str | None = None, port: int | None = None) -> str:
     """Query State-of-World for a topic."""
     try:
         from AMPS import Client, Command
@@ -282,7 +362,7 @@ def _sow_query(topic: str, filter: str = "") -> str:
     records = []
     client = None
     try:
-        client = _get_amps_client()
+        client = _get_amps_client(topic, host, port)
         cmd = Command("sow").set_topic(topic)
         if filter:
             cmd.set_filter(filter)

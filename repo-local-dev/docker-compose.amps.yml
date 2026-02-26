@@ -1,44 +1,170 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# AMPS Server stack for local POC development.
+# AMPS Stack — 5 independent AMPS processes, one per product
 #
-# PREREQUISITE: Place the AMPS Linux tarball at docker/amps/AMPS.tar
+# PREREQUISITE: Place the AMPS Linux tarball at ../repo-mcp-tools/docker/amps/AMPS.tar
 #   → Register at https://crankuptheamps.com/evaluate to obtain the binary.
 #
+# Architecture (each process has its own config.xml and SOW volume):
+#
+#   amps-core       admin :8085  tcp :9007   topics: positions, orders, market-data
+#   amps-portfolio  admin :8086  tcp :9008   topics: portfolio_nav
+#   amps-cds        admin :8087  tcp :9009   topics: cds_spreads
+#   amps-etf        admin :8088  tcp :9010   topics: etf_nav
+#   amps-risk       admin :8089  tcp :9011   topics: risk_metrics
+#
+# Publishers (seed on start, then continuous ticks):
+#   amps-publisher      → amps-core      (positions/orders/market-data, 2s tick)
+#   product-publisher   → all 4 product instances (per-topic clients, ~7s tick)
+#
 # Usage:
-#   docker compose -f docker-compose.amps.yml up -d        # start
-#   docker compose -f docker-compose.amps.yml down         # stop
-#   docker compose -f docker-compose.amps.yml logs -f amps # logs
+#   docker compose -f docker-compose.amps.yml up -d           # start all
+#   docker compose -f docker-compose.amps.yml up -d amps-core # start single instance
+#   docker compose -f docker-compose.amps.yml down
+#   docker compose -f docker-compose.amps.yml logs -f amps-cds
 #
-# After startup:
-#   AMPS Admin  → http://localhost:8085/amps.json
-#   AMPS Topics → http://localhost:8085/topics.json
-#   AMPS TCP    → tcp://localhost:9007/amps/json   (Python client)
-#
-# Then in .env:
-#   AMPS_ENABLED=true
+# Admin endpoints:
+#   amps-core      → http://localhost:8085/topics.json
+#   amps-portfolio → http://localhost:8086/topics.json
+#   amps-cds       → http://localhost:8087/topics.json
+#   amps-etf       → http://localhost:8088/topics.json
+#   amps-risk      → http://localhost:8089/topics.json
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: agentic-ai-amps
 
+x-amps-base: &amps-base
+  # All AMPS instances share the same binary image (config injected via volume mount).
+  # The image is built once: docker compose -f docker-compose.amps.yml build amps-core
+  # (requires AMPS.tar in repo-mcp-tools/docker/amps/ — register at crankuptheamps.com)
+  build:
+    context: ../repo-mcp-tools/docker/amps
+    dockerfile: Dockerfile
+  image: agentic-ai-amps-amps:latest      # reuse cached image across all 5 services
+  platform: linux/amd64       # Run x86_64 binary via Rosetta on M1 Mac
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "curl", "-sf", "http://localhost:8085/amps.json"]
+    interval: 10s
+    timeout: 5s
+    retries: 10
+    start_period: 15s
+
+x-publisher-base: &publisher-base
+  build:
+    context: ..
+    dockerfile: repo-api/Dockerfile
+  image: agentic-ai-phase3:latest           # reuse pre-built image (includes AMPS Python client)
+  working_dir: /app
+  restart: on-failure
+
 services:
-  amps:
-    build:
-      context: ../repo-mcp-tools/docker/amps
-      dockerfile: Dockerfile
-    platform: linux/amd64       # Run x86_64 binary via Rosetta on M1 Mac
-    container_name: amps-server
-    restart: unless-stopped
-    ports:
-      - "8085:8085"             # HTTP admin (amps.json, topics.json, clients.json)
-      - "9007:9007"             # TCP AMPS protocol (JSON message type)
+
+  # ── AMPS Core — positions / orders / market-data ──────────────────────────────
+  amps-core:
+    <<: *amps-base
+    container_name: amps-core
     volumes:
-      - amps_sow:/sow           # Persist SOW data across restarts
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8085/amps.json"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 15s
+      - amps_core_sow:/sow
+      - ../repo-mcp-tools/docker/amps/config.xml:/config.xml:ro
+    ports:
+      - "8085:8085"             # admin
+      - "9007:9007"             # TCP JSON
+
+  # ── AMPS Portfolio — portfolio_nav ────────────────────────────────────────────
+  amps-portfolio:
+    <<: *amps-base
+    container_name: amps-portfolio
+    volumes:
+      - amps_portfolio_sow:/sow
+      - ../repo-mcp-tools/docker/amps/config-portfolio.xml:/config.xml:ro
+    ports:
+      - "8086:8085"             # admin
+      - "9008:9007"             # TCP JSON
+
+  # ── AMPS CDS — cds_spreads ────────────────────────────────────────────────────
+  amps-cds:
+    <<: *amps-base
+    container_name: amps-cds
+    volumes:
+      - amps_cds_sow:/sow
+      - ../repo-mcp-tools/docker/amps/config-cds.xml:/config.xml:ro
+    ports:
+      - "8087:8085"             # admin
+      - "9009:9007"             # TCP JSON
+
+  # ── AMPS ETF — etf_nav ───────────────────────────────────────────────────────
+  amps-etf:
+    <<: *amps-base
+    container_name: amps-etf
+    volumes:
+      - amps_etf_sow:/sow
+      - ../repo-mcp-tools/docker/amps/config-etf.xml:/config.xml:ro
+    ports:
+      - "8088:8085"             # admin
+      - "9010:9007"             # TCP JSON
+
+  # ── AMPS Risk — risk_metrics ──────────────────────────────────────────────────
+  amps-risk:
+    <<: *amps-base
+    container_name: amps-risk
+    volumes:
+      - amps_risk_sow:/sow
+      - ../repo-mcp-tools/docker/amps/config-risk.xml:/config.xml:ro
+    ports:
+      - "8089:8085"             # admin
+      - "9011:9007"             # TCP JSON
+
+  # ── AMPS Publisher — positions / orders / market-data ─────────────────────────
+  # Seeds the 3 core topics, then ticks every 2 seconds.
+  amps-publisher:
+    <<: *publisher-base
+    container_name: amps-publisher
+    entrypoint: ["python", "scripts/amps_publisher.py"]
+    environment:
+      AMPS_HOST: amps-core
+      AMPS_PORT: "9007"
+      MODE: both
+      TICK_INTERVAL: "2"
+    volumes:
+      - ./scripts/amps_publisher.py:/app/scripts/amps_publisher.py:ro
+    depends_on:
+      amps-core:
+        condition: service_healthy
+
+  # ── Product Publisher — portfolio_nav / cds_spreads / etf_nav / risk_metrics ──
+  # Connects to all 4 product AMPS instances independently (4 separate clients).
+  # Seeds on start, then ticks every ~7s (±30% jitter per cycle).
+  product-publisher:
+    <<: *publisher-base
+    container_name: product-publisher
+    entrypoint: ["python", "scripts/product_publishers.py"]
+    environment:
+      # Each product maps to its own AMPS container (Docker internal port 9007)
+      AMPS_PORTFOLIO_HOST: amps-portfolio
+      AMPS_PORTFOLIO_PORT: "9007"
+      AMPS_CDS_HOST: amps-cds
+      AMPS_CDS_PORT: "9007"
+      AMPS_ETF_HOST: amps-etf
+      AMPS_ETF_PORT: "9007"
+      AMPS_RISK_HOST: amps-risk
+      AMPS_RISK_PORT: "9007"
+      MODE: both
+      TICK_INTERVAL: "7"
+    volumes:
+      - ./scripts/product_publishers.py:/app/scripts/product_publishers.py:ro
+    depends_on:
+      amps-portfolio:
+        condition: service_healthy
+      amps-cds:
+        condition: service_healthy
+      amps-etf:
+        condition: service_healthy
+      amps-risk:
+        condition: service_healthy
 
 volumes:
-  amps_sow:
+  amps_core_sow:
+  amps_portfolio_sow:
+  amps_cds_sow:
+  amps_etf_sow:
+  amps_risk_sow:

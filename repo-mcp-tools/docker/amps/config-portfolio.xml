@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AMPS Portfolio Server — portfolio_nav
+
+  Instance: amps-portfolio
+  Ports (internal — Docker maps these to host):
+    8085  HTTP admin
+    9007  TCP JSON transport
+
+  Host port mapping (docker-compose.amps.yml):
+    8086  → 8085  (admin)
+    9008  → 9007  (TCP)
+
+  SOW Topics:
+    portfolio_nav → NAV + daily P&L per portfolio (key: /portfolio_id)
+
+  Publisher:  product_publishers.py  (AMPS_PORTFOLIO_HOST / AMPS_PORTFOLIO_PORT)
+  Data scope: 5 portfolios — HY_MAIN, IG_CORE, EM_BLEND, RATES_GOV, MULTI_STRAT
+-->
+<AMPSConfig>
+  <Name>amps-portfolio</Name>
+
+  <Admin>
+    <InetAddr>0.0.0.0:8085</InetAddr>
+  </Admin>
+
+  <Transports>
+    <Transport>
+      <Name>tcp-json</Name>
+      <Type>tcp</Type>
+      <InetAddr>0.0.0.0:9007</InetAddr>
+      <MessageType>json</MessageType>
+    </Transport>
+  </Transports>
+
+  <SOW>
+    <Topic>
+      <Name>portfolio_nav</Name>
+      <MessageType>json</MessageType>
+      <Key>/portfolio_id</Key>
+      <FileName>sow/portfolio_nav.sow</FileName>
+    </Topic>
+  </SOW>
+
+</AMPSConfig>

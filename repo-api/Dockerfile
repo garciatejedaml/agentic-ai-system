@@ -26,10 +26,13 @@
 FROM python:3.11-slim AS base
 
 # System dependencies: curl (healthcheck), Node.js (MCP npm servers), uvx (mcp-fetch)
+# gcc/g++ needed to build AMPS Python client from source zip
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         nodejs \
         npm \
+        gcc \
+        g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uvx (uv tool runner) for mcp-server-fetch
@@ -45,7 +48,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install AMPS Python client from local zip if present (optional)
 # The zip is not in PyPI; it ships with the AMPS binary download.
 # If building without AMPS, this step is safely skipped.
-COPY repo-rag-ingest/amps/client/ /tmp/amps-client/
+COPY repo-mcp-tools/amps/client/ /tmp/amps-client/
 RUN if ls /tmp/amps-client/*.zip 2>/dev/null; then \
         pip install --no-cache-dir /tmp/amps-client/*.zip; \
     else \
@@ -62,10 +65,6 @@ COPY repo-rag-ingest/scripts/ ./scripts/
 COPY repo-rag-ingest/data/ ./data/
 COPY repo-api/main.py .
 
-# Create directory for ChromaDB persistence
-# In production: mount an EFS volume here or switch to Aurora pgvector
-RUN mkdir -p /data/chroma_db
-
 # ── Runtime configuration ──────────────────────────────────────────────────────
 # MCP_SERVER_DIR tells mcp_clients.py where to find the MCP server scripts in-container
 ENV MCP_SERVER_DIR=/app/src/mcp_server \
@@ -74,8 +73,9 @@ ENV MCP_SERVER_DIR=/app/src/mcp_server \
     PORT=8000 \
     # Default to Bedrock in production; override with LLM_PROVIDER=anthropic for local testing
     LLM_PROVIDER=bedrock \
-    # RAG settings
-    CHROMA_PERSIST_DIR=/data/chroma_db \
+    # RAG settings (OpenSearch — set OPENSEARCH_URL via env or docker-compose)
+    OPENSEARCH_URL=http://opensearch:9200 \
+    OPENSEARCH_INDEX=knowledge_base \
     KDB_DATA_PATH=/app/data/kdb \
     # Observability off by default (enable via env in ECS task definition)
     OBSERVABILITY_ENABLED=false
@@ -93,5 +93,9 @@ RUN chmod +x /entrypoint.sh
 # Phase 2: service selector entrypoint (picks role via AGENT_SERVICE env var)
 COPY repo-api/docker/phase2_entrypoint.sh /phase2_entrypoint.sh
 RUN chmod +x /phase2_entrypoint.sh
+
+# Phase 3: extended entrypoint (adds portfolio, cds, etf, risk_pnl services)
+COPY repo-api/docker/phase3_entrypoint.sh /phase3_entrypoint.sh
+RUN chmod +x /phase3_entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -159,7 +159,53 @@ $AWS dynamodb put-item \
     \"ttl\":          {\"N\": \"${TTL}\"}
   }" > /dev/null
 
-echo "[localstack-init] DynamoDB: 3 A2A agents pre-registered in agent-registry"
+# ── Phase 3: Pre-register new specialist agents ────────────────────────────────
+
+$AWS dynamodb put-item \
+  --table-name agentic-ai-staging-agent-registry \
+  --item "{
+    \"agent_id\":     {\"S\": \"portfolio-agent\"},
+    \"desk_name\":    {\"S\": \"HY\"},
+    \"endpoint\":     {\"S\": \"http://portfolio-agent:8004\"},
+    \"capabilities\": {\"SS\": [\"portfolio_holdings\", \"portfolio_exposure\", \"portfolio_concentration\"]},
+    \"status\":       {\"S\": \"registered\"},
+    \"ttl\":          {\"N\": \"${TTL}\"}
+  }" > /dev/null
+
+$AWS dynamodb put-item \
+  --table-name agentic-ai-staging-agent-registry \
+  --item "{
+    \"agent_id\":     {\"S\": \"cds-agent\"},
+    \"desk_name\":    {\"S\": \"HY\"},
+    \"endpoint\":     {\"S\": \"http://cds-agent:8005\"},
+    \"capabilities\": {\"SS\": [\"cds_spreads\", \"cds_term_structure\", \"cds_screener\"]},
+    \"status\":       {\"S\": \"registered\"},
+    \"ttl\":          {\"N\": \"${TTL}\"}
+  }" > /dev/null
+
+$AWS dynamodb put-item \
+  --table-name agentic-ai-staging-agent-registry \
+  --item "{
+    \"agent_id\":     {\"S\": \"etf-agent\"},
+    \"desk_name\":    {\"S\": \"HY\"},
+    \"endpoint\":     {\"S\": \"http://etf-agent:8006\"},
+    \"capabilities\": {\"SS\": [\"etf_nav_aum\", \"etf_flows\", \"etf_basket\"]},
+    \"status\":       {\"S\": \"registered\"},
+    \"ttl\":          {\"N\": \"${TTL}\"}
+  }" > /dev/null
+
+$AWS dynamodb put-item \
+  --table-name agentic-ai-staging-agent-registry \
+  --item "{
+    \"agent_id\":     {\"S\": \"risk-pnl-agent\"},
+    \"desk_name\":    {\"S\": \"HY\"},
+    \"endpoint\":     {\"S\": \"http://risk-pnl-agent:8007\"},
+    \"capabilities\": {\"SS\": [\"var_computation\", \"dv01_cs01\", \"pnl_attribution\"]},
+    \"status\":       {\"S\": \"registered\"},
+    \"ttl\":          {\"N\": \"${TTL}\"}
+  }" > /dev/null
+
+echo "[localstack-init] DynamoDB: 7 A2A agents pre-registered (3 Phase 2 + 4 Phase 3)"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
@@ -174,4 +220,8 @@ echo "  A2A Agents pre-registered:"
 echo "    kdb-agent              → http://kdb-agent:8001"
 echo "    amps-agent             → http://amps-agent:8002"
 echo "    financial-orchestrator → http://financial-orchestrator:8003"
+echo "    portfolio-agent        → http://portfolio-agent:8004  [Phase 3]"
+echo "    cds-agent              → http://cds-agent:8005         [Phase 3]"
+echo "    etf-agent              → http://etf-agent:8006         [Phase 3]"
+echo "    risk-pnl-agent         → http://risk-pnl-agent:8007   [Phase 3]"
 echo ""

@@ -1,24 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  AMPS Server configuration for local POC development.
+  AMPS Core Server — positions / orders / market-data
 
-  Ports:
-    8085 → HTTP admin interface (exposes /amps.json, /topics.json, /clients.json)
-    9007 → TCP transport for JSON messages (AMPS Python client connects here)
+  Ports (internal — Docker maps these to host ports):
+    8085  HTTP admin  (amps.json, topics.json, clients.json)
+    9007  TCP JSON transport
 
   SOW Topics:
-    positions → stores latest position per instrument (keyed by /id)
-    orders    → stores latest order state (keyed by /order_id)
+    positions   → latest position per trader+bond    (key: /id)
+    orders      → latest order state                  (key: /order_id)
+    market-data → latest bid/ask/mid per bond symbol  (key: /symbol)
+
+  Phase 3 product topics live on separate AMPS instances:
+    amps-portfolio  →  config-portfolio.xml  (portfolio_nav)
+    amps-cds        →  config-cds.xml        (cds_spreads)
+    amps-etf        →  config-etf.xml        (etf_nav)
+    amps-risk       →  config-risk.xml       (risk_metrics)
 -->
 <AMPSConfig>
-  <Name>amps-poc</Name>
+  <Name>amps-core</Name>
 
-  <!-- HTTP admin: exposes amps.json, topics.json, clients.json, stats.json -->
   <Admin>
     <InetAddr>0.0.0.0:8085</InetAddr>
   </Admin>
 
-  <!-- TCP transport for JSON messages -->
   <Transports>
     <Transport>
       <Name>tcp-json</Name>
@@ -28,7 +33,6 @@
     </Transport>
   </Transports>
 
-  <!-- State-of-World (SOW) topics: persist latest state per key -->
   <SOW>
     <Topic>
       <Name>positions</Name>
