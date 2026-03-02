@@ -150,11 +150,16 @@ def open_mcp_tools(docs_path: str = "./data"):
     with ExitStack() as stack:
 
         all_tools: list = []
+        started = 0
         for client in clients:
-            stack.enter_context(client)
-            all_tools.extend(client.list_tools_sync())
+            try:
+                stack.enter_context(client)
+                all_tools.extend(client.list_tools_sync())
+                started += 1
+            except Exception as e:
+                print(f"[MCP] WARNING: client failed to start, skipping: {e}")
 
-        print(f"[MCP] {len(all_tools)} external tools loaded from {len(clients)} servers.")
+        print(f"[MCP] {len(all_tools)} external tools loaded from {started}/{len(clients)} servers.")
         yield all_tools
 
 

@@ -1,18 +1,20 @@
 """
-Dual observability setup: Langfuse + Phoenix (Arize)
+Observability setup: Langfuse + Phoenix (Arize) + Dynatrace (enterprise APM)
 
 Architecture
 ────────────
-A single OpenTelemetry (OTEL) TracerProvider sends traces to BOTH backends
-via two BatchSpanProcessors / OTLPSpanExporters:
+A single OpenTelemetry (OTEL) TracerProvider sends traces to up to three backends
+via BatchSpanProcessors / OTLPSpanExporters:
 
     TracerProvider
-    ├── BatchSpanProcessor → OTLPSpanExporter → Phoenix  :6006
-    └── BatchSpanProcessor → OTLPSpanExporter → Langfuse :3000
+    ├── BatchSpanProcessor → OTLPSpanExporter → Phoenix    :6006  (if PHOENIX_ENDPOINT set)
+    ├── BatchSpanProcessor → OTLPSpanExporter → Langfuse   :3000  (if LANGFUSE keys set)
+    └── BatchSpanProcessor → OTLPSpanExporter → Dynatrace  SaaS   (if DYNATRACE_ENDPOINT set)
 
 LangChain / LangGraph instrumentation:
   • Phoenix  : LangChainInstrumentor (auto, openinference) → graph spans, RAG spans
   • Langfuse : CallbackHandler passed at graph.invoke()    → graph VIEW in UI
+  • Dynatrace: receives all OTEL spans natively (no extra instrumentation needed)
 
 Strands Agents:
   • Emits OTEL spans natively (strands-agents[otel]).
@@ -103,6 +105,28 @@ def setup_observability() -> None:
                 "install opentelemetry-exporter-otlp-proto-http"
             )
 
+    # ── Dynatrace exporter ────────────────────────────────────────────────────
+    # Receives all OTEL spans natively — no extra instrumentation needed.
+    # Enabled when DYNATRACE_ENDPOINT + DYNATRACE_API_TOKEN are set.
+    if config.DYNATRACE_ENDPOINT and config.DYNATRACE_API_TOKEN:
+        try:
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                OTLPSpanExporter,
+            )
+
+            dynatrace_exporter = OTLPSpanExporter(
+                endpoint=f"{config.DYNATRACE_ENDPOINT}/api/v2/otlp/v1/traces",
+                headers={"Authorization": f"Api-Token {config.DYNATRACE_API_TOKEN}"},
+            )
+            provider.add_span_processor(BatchSpanProcessor(dynatrace_exporter))
+            exporters_added += 1
+            logger.info(f"[observability] Dynatrace exporter → {config.DYNATRACE_ENDPOINT}")
+        except ImportError:
+            logger.warning(
+                "[observability] Dynatrace exporter skipped – "
+                "install opentelemetry-exporter-otlp-proto-http"
+            )
+
     if exporters_added == 0:
         logger.warning(
             "[observability] No exporters configured. "
@@ -113,7 +137,7 @@ def setup_observability() -> None:
     trace.set_tracer_provider(provider)
 
     # ── Phoenix: auto-instrument LangChain / LangGraph ────────────────────────
-    # This captures every LangGraph node, LangChain call, and ChromaDB retrieval
+    # This captures every LangGraph node, LangChain call, and OpenSearch retrieval
     # as typed OpenInference spans (CHAIN, RETRIEVER, LLM, TOOL, AGENT…).
     try:
         from openinference.instrumentation.langchain import LangChainInstrumentor

@@ -64,9 +64,11 @@ resource "aws_rds_cluster_instance" "pgvector_writer" {
 # The orchestrator reads this table to discover which agents handle which queries.
 
 resource "aws_dynamodb_table" "agent_registry" {
-  name         = "${local.name_prefix}-agent-registry"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "agent_id"
+  name             = "${local.name_prefix}-agent-registry"
+  billing_mode     = "PAY_PER_REQUEST"
+  hash_key         = "agent_id"
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
 
   attribute {
     name = "agent_id"
@@ -89,6 +91,14 @@ resource "aws_dynamodb_table" "agent_registry" {
     enabled = true
   }
 
+  # Phase 4: Cross-region replica — only enabled when cross_region_failover_enabled=true
+  dynamic "replica" {
+    for_each = var.cross_region_failover_enabled ? [var.secondary_region] : []
+    content {
+      region_name = replica.value
+    }
+  }
+
   tags = { Name = "${local.name_prefix}-agent-registry" }
 }
 
@@ -102,9 +112,11 @@ resource "aws_dynamodb_table" "agent_registry" {
 # GSI ByUser enables listing all sessions for a given trader (future feature).
 
 resource "aws_dynamodb_table" "sessions" {
-  name         = "${local.name_prefix}-sessions"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "session_id"
+  name             = "${local.name_prefix}-sessions"
+  billing_mode     = "PAY_PER_REQUEST"
+  hash_key         = "session_id"
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
 
   attribute {
     name = "session_id"
@@ -134,7 +146,46 @@ resource "aws_dynamodb_table" "sessions" {
     enabled = true
   }
 
+  # Phase 4: Cross-region replica for session memory backup
+  # When enabled, conversation history is automatically replicated to secondary region.
+  # AMPS already handles its own cross-region failover via URL-level routing.
+  dynamic "replica" {
+    for_each = var.cross_region_failover_enabled ? [var.secondary_region] : []
+    content {
+      region_name = replica.value
+    }
+  }
+
   tags = { Name = "${local.name_prefix}-sessions" }
+}
+
+# ── DynamoDB — Daily Token Usage (Phase 4 Rate Limiting) ─────────────────────
+# Tracks per-user daily request count. Used by rate_limiter.py in the API.
+# PK: user_id | SK: date (YYYY-MM-DD)
+# TTL: auto-expires after 2 days (no manual cleanup needed)
+
+resource "aws_dynamodb_table" "token_usage" {
+  name         = "${local.name_prefix}-token-usage"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "user_id"
+  range_key    = "date"
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "date"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  tags = { Name = "${local.name_prefix}-token-usage" }
 }
 
 # ── SQS — Async Job Queue ─────────────────────────────────────────────────────
@@ -177,10 +228,11 @@ resource "aws_secretsmanager_secret_version" "app_placeholder" {
 
   # Placeholder values — replace via CLI after deploy (see infra/README.md)
   secret_string = jsonencode({
-    ANTHROPIC_API_KEY   = "REPLACE_ME"
-    BRAVE_API_KEY       = "REPLACE_ME"
-    LANGFUSE_PUBLIC_KEY = "REPLACE_ME"
-    LANGFUSE_SECRET_KEY = "REPLACE_ME"
+    ANTHROPIC_API_KEY    = "REPLACE_ME"
+    BRAVE_API_KEY        = "REPLACE_ME"
+    LANGFUSE_PUBLIC_KEY  = "REPLACE_ME"
+    LANGFUSE_SECRET_KEY  = "REPLACE_ME"
+    DYNATRACE_API_TOKEN  = "REPLACE_ME"  # dt0c01.... — leave REPLACE_ME to keep Dynatrace disabled
   })
 
   # Ignore changes after initial creation so manual updates via CLI are preserved

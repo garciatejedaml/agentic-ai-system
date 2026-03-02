@@ -115,6 +115,11 @@ def route_query(query: str) -> RouterDecision:
         query=query,
     )
 
+    # Mock mode: skip LLM call entirely — route to kdb-agent as default
+    if config.LLM_PROVIDER == "mock":
+        print("[LLM Router] mock mode → kdb-agent (no LLM call)")
+        return RouterDecision(agents=[_FALLBACK_AGENT], strategy="parallel", reasoning="mock")
+
     try:
         import litellm
 

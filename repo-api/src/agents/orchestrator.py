@@ -168,8 +168,14 @@ def _run_general(query: str, rag_context: list[dict]) -> OrchestratorResult:
     )
 
     print(f"[Orchestrator] Route → General (Researcher + Synthesizer)")
-    with open_mcp_tools(docs_path=config.MCP_FILESYSTEM_PATH) as mcp_tools:
-        researcher = create_researcher(extra_tools=mcp_tools)
+    try:
+        mcp_ctx = open_mcp_tools(docs_path=config.MCP_FILESYSTEM_PATH)
+        with mcp_ctx as mcp_tools:
+            researcher = create_researcher(extra_tools=mcp_tools)
+            research_response = researcher(research_prompt)
+    except Exception as e:
+        print(f"[Orchestrator] WARNING: MCP tools unavailable ({e}), running without external tools")
+        researcher = create_researcher(extra_tools=[])
         research_response = researcher(research_prompt)
 
     research_text = str(research_response)

@@ -25,10 +25,21 @@ Your job:
 """
 
 
-def create_synthesizer() -> Agent:
-    """Instantiate the Synthesizer Strands agent (no tools — reasoning only)."""
+def create_synthesizer(max_iterations: int | None = None) -> Agent:
+    """
+    Instantiate the Synthesizer Strands agent (no tools — reasoning only).
+
+    Args:
+        max_iterations: Max reasoning loop iterations (guardrail). Falls back
+                        to AGENT_MAX_ITERATIONS from config when None.
+    """
+    from src.config import config
+
+    iterations = max_iterations if max_iterations is not None else config.AGENT_MAX_ITERATIONS
+
     return Agent(
         model=get_strands_model(),
         system_prompt=SYNTHESIZER_SYSTEM_PROMPT,
         tools=[],
+        max_iterations=iterations,
     )

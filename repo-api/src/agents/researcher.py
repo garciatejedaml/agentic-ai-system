@@ -31,20 +31,30 @@ web/external sources. If no information is found anywhere, say so clearly.
 """
 
 
-def create_researcher(extra_tools: list | None = None) -> Agent:
+def create_researcher(
+    extra_tools: list | None = None,
+    max_iterations: int | None = None,
+) -> Agent:
     """
     Instantiate the Researcher Strands agent.
 
     Args:
-        extra_tools: Optional list of MCP-backed tools (web search, fetch,
-                     filesystem) returned by `open_mcp_tools()`.
+        extra_tools:    Optional list of MCP-backed tools (web search, fetch,
+                        filesystem) returned by `open_mcp_tools()`.
+        max_iterations: Max tool-use loop iterations (guardrail). Falls back
+                        to AGENT_MAX_ITERATIONS from config when None.
     """
+    from src.config import config
+
     tools = [search_knowledge_base, summarize_findings]
     if extra_tools:
         tools.extend(extra_tools)
+
+    iterations = max_iterations if max_iterations is not None else config.AGENT_MAX_ITERATIONS
 
     return Agent(
         model=get_strands_model(),
         system_prompt=RESEARCHER_SYSTEM_PROMPT,
         tools=tools,
+        max_iterations=iterations,
     )

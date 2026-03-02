@@ -51,11 +51,25 @@ x-common-env: &common-env
   ETF_ENABLED: "true"
   OPENSEARCH_URL: http://opensearch:9200
   OPENSEARCH_INDEX: knowledge_base
-  OBSERVABILITY_ENABLED: "true"
-  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
-  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
-  LANGFUSE_HOST: http://langfuse-web:3000
-  PHOENIX_ENDPOINT: http://phoenix:6006
+  OBSERVABILITY_ENABLED: "false"
+  LANGFUSE_PUBLIC_KEY: ""
+  LANGFUSE_SECRET_KEY: ""
+  LANGFUSE_HOST: ""
+  PHOENIX_ENDPOINT: ""
+  # Phase 4: Dynatrace (leave empty = exporter disabled; set to enable in prod)
+  DYNATRACE_ENDPOINT: ""
+  DYNATRACE_API_TOKEN: ""
+  # Phase 4: Guardrails
+  AGENT_MAX_ITERATIONS: "15"
+  GRAPH_RECURSION_LIMIT: "25"
+  AGENT_TIMEOUT_DEFAULT: "60"
+  AGENT_TIMEOUT_KDB: "90"
+  AGENT_TIMEOUT_AMPS: "30"
+  AGENT_TIMEOUT_RISK_PNL: "90"
+  # Phase 4: Rate limiting (disabled in local dev — no DynamoDB table created)
+  RATE_LIMIT_ENABLED: "false"
+  DAILY_REQUEST_LIMIT: "1000"
+  TOKEN_USAGE_TABLE: "agentic-ai-staging-token-usage"
 
 x-agent-base: &agent-base
   build:

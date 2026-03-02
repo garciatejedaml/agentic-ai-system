@@ -16,6 +16,8 @@ from src.graph.state import AgentState
 
 def build_graph() -> StateGraph:
     """Build and compile the LangGraph StateGraph."""
+    from src.config import config
+
     graph = StateGraph(AgentState)
 
     # ── Register nodes ────────────────────────────────────────────────────────
@@ -31,7 +33,8 @@ def build_graph() -> StateGraph:
     graph.add_edge("strands", "format")
     graph.add_edge("format", END)
 
-    return graph.compile()
+    # recursion_limit guards against accidental infinite cycles (Phase 4 guardrail)
+    return graph.compile(recursion_limit=config.GRAPH_RECURSION_LIMIT)
 
 
 # ── Public helpers ────────────────────────────────────────────────────────────

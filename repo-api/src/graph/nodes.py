@@ -9,10 +9,16 @@ Graph topology:
 """
 from __future__ import annotations
 
+import time
 import traceback
 
 from src.graph.state import AgentState
 from src.rag.retriever import get_retriever
+
+# Errors from Anthropic / LiteLLM that indicate transient overload — safe to retry
+_RETRYABLE_PHRASES = ("overloaded", "serviceunvailable", "rate_limit", "529", "too many requests")
+_MAX_RETRIES = 3
+_RETRY_BASE_DELAY = 5  # seconds; doubles each attempt (5 → 10 → 20)
 
 
 # ── Node 1: Intake ────────────────────────────────────────────────────────────
@@ -66,18 +72,30 @@ def strands_node(state: AgentState) -> dict:
     if state.get("error"):
         return {}
 
-    try:
-        # Import here to avoid circular deps and keep startup fast
-        from src.agents.orchestrator import run_strands_orchestrator
+    from src.agents.orchestrator import run_strands_orchestrator
 
-        result = run_strands_orchestrator(
-            query=state["query"],
-            rag_context=state.get("rag_context") or [],
-        )
-        return {"research": result.research, "synthesis": result.synthesis}
-    except Exception as exc:
-        tb = traceback.format_exc()
-        return {"error": f"Strands agents failed: {exc}\n{tb}"}
+    last_exc: Exception | None = None
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            result = run_strands_orchestrator(
+                query=state["query"],
+                rag_context=state.get("rag_context") or [],
+            )
+            return {"research": result.research, "synthesis": result.synthesis}
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            is_retryable = any(phrase in exc_str for phrase in _RETRYABLE_PHRASES)
+            if is_retryable and attempt < _MAX_RETRIES:
+                delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                print(f"[strands_node] Anthropic overloaded (attempt {attempt}/{_MAX_RETRIES}), retrying in {delay}s...")
+                time.sleep(delay)
+                last_exc = exc
+            else:
+                tb = traceback.format_exc()
+                return {"error": f"Strands agents failed: {exc}\n{tb}"}
+
+    tb = traceback.format_exc()
+    return {"error": f"Strands agents failed after {_MAX_RETRIES} retries: {last_exc}\n{tb}"}
 
 
 # ── Node 4: Format Response ────────────────────────────────────────────────────

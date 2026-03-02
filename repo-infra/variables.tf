@@ -133,14 +133,22 @@ variable "amps_tcp_port" {
   default     = 9007
 }
 
-variable "log_level" {
-  description = "Application log level (INFO | DEBUG | WARNING)"
-  type        = string
-  default     = "INFO"
+# ── Phase 4: Cross-region failover ────────────────────────────────────────────
+
+variable "cross_region_failover_enabled" {
+  description = "Enable DynamoDB Global Tables replica + Route53 health check in secondary region"
+  type        = bool
+  default     = false
 }
 
-variable "skip_ingest" {
-  description = "Skip RAG doc ingestion on startup (true for faster deploys when data already ingested)"
+variable "secondary_region" {
+  description = "Secondary AWS region for DynamoDB Global Tables replica"
   type        = string
-  default     = "false"
+  default     = "us-west-2"
+}
+
+variable "route53_zone_id" {
+  description = "Route53 hosted zone ID (required when cross_region_failover_enabled=true)"
+  type        = string
+  default     = ""
 }

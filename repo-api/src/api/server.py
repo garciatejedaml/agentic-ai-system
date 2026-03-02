@@ -29,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from src.api.rate_limiter import RateLimitExceeded, check_and_increment
 from src.config import config
 from src.observability import setup_observability
 
@@ -251,16 +252,23 @@ async def chat_completions(request: ChatRequest):
     user_message = next(
         (m.content for m in reversed(request.messages) if m.role == "user"), ""
     )
+    user_id = request.user or "anonymous"
+    desk_name = request.desk_name or ""
     if not user_message:
         session_id = request.session_id or create_session(
-            user_id=request.user or "",
-            desk_name=request.desk_name or "",
+            user_id=user_id,
+            desk_name=desk_name,
         )
         return _build_response("No user message found.", request.model, session_id)
 
-    # ── 2. Session: load or create ───────────────────────────────────────────
-    user_id = request.user or ""
-    desk_name = request.desk_name or ""
+    # ── 2. Rate limit check (daily per-user request quota) ───────────────────
+    try:
+        check_and_increment(user_id)
+    except RateLimitExceeded as exc:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=429, content={"error": str(exc)})
+
+    # ── 3. Session: load or create ───────────────────────────────────────────
 
     if request.session_id:
         session_id = request.session_id
@@ -271,14 +279,14 @@ async def chat_completions(request: ChatRequest):
         history = []
         logger.info("[session:%s] New session for user %s", session_id, user_id)
 
-    # ── 3. Build enriched query with conversation context ────────────────────
+    # ── 4. Build enriched query with conversation context ────────────────────
     context_str = build_context_string(history)
     if context_str:
         enriched_query = f"{context_str}\n\n[Current Query]\n{user_message}"
     else:
         enriched_query = user_message
 
-    # ── 4. Streaming: return immediately; agent runs inside the generator ────
+    # ── 5. Streaming: return immediately; agent runs inside the generator ────
     if request.stream:
         return StreamingResponse(
             _stream_response_live(
@@ -288,7 +296,7 @@ async def chat_completions(request: ChatRequest):
             media_type="text/event-stream",
         )
 
-    # ── 5. Non-streaming: run agent then return full response ────────────────
+    # ── 6. Non-streaming: run agent then return full response ────────────────
     loop = asyncio.get_event_loop()
     content = await loop.run_in_executor(_executor, _run_agent, enriched_query)
 
