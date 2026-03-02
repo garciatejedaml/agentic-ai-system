@@ -116,6 +116,10 @@ def run_kdb_agent(query: str) -> str:
 
     Returns an error message string if KDB is disabled or unavailable.
     """
+    from src.agents.prompt_registry import get_system_prompt
+    prompt_name = "kdb-agent-system-prompt-server" if _KDB_MODE == "server" else "kdb-agent-system-prompt"
+    system_prompt = get_system_prompt(prompt_name, _SYSTEM_PROMPT)
+
     with open_kdb_tools() as kdb_tools:
         if not kdb_tools:
             return (
@@ -125,7 +129,7 @@ def run_kdb_agent(query: str) -> str:
 
         agent = Agent(
             model=get_strands_fast_model(),
-            system_prompt=_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             tools=kdb_tools,
         )
         result = agent(query)

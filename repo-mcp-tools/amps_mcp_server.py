@@ -430,4 +430,18 @@ async def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
-    asyncio.run(main())
+    if os.getenv("MCP_TRANSPORT", "stdio") == "http":
+        # ── HTTP/SSE mode — runs as a persistent ECS service ─────────────────
+        # Register in DynamoDB and serve MCP over HTTP.
+        # Set: MCP_SERVER_ID=amps-mcp  MCP_PORT=9100  MCP_HOST_URL=http://amps-mcp-http:9100
+        import sys as _sys
+        _sys.path.insert(0, os.path.dirname(__file__))
+        from mcp_http_server import run_http_server
+        _tools = [
+            "amps_server_info", "amps_list_topics",
+            "amps_subscribe", "amps_sow_query", "amps_publish",
+        ]
+        run_http_server(server, server_id="amps-mcp", tools=_tools,
+                        port=int(os.getenv("MCP_PORT", "9100")))
+    else:
+        asyncio.run(main())

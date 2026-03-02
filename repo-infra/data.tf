@@ -188,6 +188,31 @@ resource "aws_dynamodb_table" "token_usage" {
   tags = { Name = "${local.name_prefix}-token-usage" }
 }
 
+# ── DynamoDB — MCP Server Registry (Phase 5) ──────────────────────────────────
+# Tracks HTTP MCP servers that auto-register on ECS task startup.
+# PK: server_id (e.g. "amps-mcp", "kdb-mcp")
+# TTL: 90s — servers must heartbeat every 60s to stay visible to the gateway.
+# No manual configuration needed: servers register themselves and gateway
+# discovers them dynamically.
+
+resource "aws_dynamodb_table" "mcp_registry" {
+  name         = "${local.name_prefix}-mcp-registry"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "server_id"
+
+  attribute {
+    name = "server_id"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  tags = { Name = "${local.name_prefix}-mcp-registry" }
+}
+
 # ── SQS — Async Job Queue ─────────────────────────────────────────────────────
 # Decouples API from long-running agent runs (>30s).
 # API returns job_id immediately; client polls /v1/jobs/{id} for status.

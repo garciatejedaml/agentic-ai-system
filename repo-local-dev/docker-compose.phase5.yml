@@ -1,0 +1,291 @@
+# ── Phase 5: MCP Gateway + Auto-Registration + Langfuse Prompt Management ─────
+#
+# Extends Phase 3 with:
+#   Langfuse (self-hosted)  :3000   Prompt management UI + tracing
+#   amps-mcp-http           :9100   AMPS MCP server (HTTP/SSE, auto-registers)
+#   kdb-mcp-http            :9101   KDB MCP server  (HTTP/SSE, auto-registers)
+#   portfolio-mcp-http      :9102   Portfolio MCP   (HTTP/SSE, auto-registers)
+#   cds-mcp-http            :9103   CDS MCP         (HTTP/SSE, auto-registers)
+#   etf-mcp-http            :9104   ETF MCP         (HTTP/SSE, auto-registers)
+#   mcp-gateway             :9000   Unified MCP entry point (aggregates all tools)
+#
+# Usage (from monorepo root):
+#   docker compose -f repo-local-dev/docker-compose.phase3.yml \
+#                  -f repo-local-dev/docker-compose.phase5.yml \
+#                  --env-file .env up -d
+#
+# Langfuse UI:
+#   open http://localhost:3000
+#   Login: admin@example.com / changeme
+#   Prompts auto-seeded on first agent query.
+#
+# MCP Gateway:
+#   Health:  curl http://localhost:9000/health
+#   MCP/SSE: http://localhost:9000/sse  (add to Claude Desktop as MCP server)
+#
+# Verify auto-registration (after containers start):
+#   aws --endpoint-url=http://localhost:4566 \
+#     dynamodb scan --table-name agentic-ai-staging-mcp-registry
+#
+# MCP server health checks:
+#   for p in 9100 9101 9102 9103 9104; do
+#     echo "=== Port $p ===" && curl -s http://localhost:$p/health | python3 -m json.tool
+#   done
+
+name: agentic-ai-phase5
+
+# ── Langfuse keys must match .env (or set LANGFUSE_INIT_* below manually) ─────
+# The self-hosted Langfuse instance is pre-configured with the keys from .env.
+# Agents will call http://langfuse:3000 inside the container network.
+
+x-mcp-env: &mcp-env
+  MCP_TRANSPORT: "http"
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_ENDPOINT_URL: http://localstack:4566
+  MCP_REGISTRY_TABLE: agentic-ai-staging-mcp-registry
+  KDB_MODE: poc
+  KDB_DATA_PATH: /app/data/kdb
+  # AMPS defaults (no live AMPS in local dev)
+  AMPS_HOST: host.docker.internal
+  AMPS_PORT: "9007"
+  AMPS_ADMIN_PORT: "8085"
+  AMPS_TOPIC_ROUTE_portfolio_nav: host.docker.internal:9008
+  AMPS_TOPIC_ROUTE_cds_spreads: host.docker.internal:9009
+  AMPS_TOPIC_ROUTE_etf_nav: host.docker.internal:9010
+  AMPS_TOPIC_ROUTE_risk_metrics: host.docker.internal:9011
+
+services:
+
+  # ── Langfuse DB (Postgres) ─────────────────────────────────────────────────
+  langfuse-db:
+    image: postgres:15-alpine
+    container_name: langfuse-db-phase5
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+    volumes:
+      - langfuse-db-data:/var/lib/postgresql/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Langfuse Server ────────────────────────────────────────────────────────
+  langfuse:
+    image: langfuse/langfuse:3
+    container_name: langfuse-phase5
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: phase5-local-secret
+      SALT: phase5-local-salt
+      NEXTAUTH_URL: http://localhost:3000
+      TELEMETRY_ENABLED: "false"
+      # Pre-configure a project with keys matching .env
+      # These keys are used by agents to push prompts and traces.
+      LANGFUSE_INIT_ORG_ID: "org-agentic-ai"
+      LANGFUSE_INIT_ORG_NAME: "Agentic AI System"
+      LANGFUSE_INIT_PROJECT_ID: "proj-agentic-ai"
+      LANGFUSE_INIT_PROJECT_NAME: "Agentic AI"
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
+      LANGFUSE_INIT_USER_EMAIL: "admin@example.com"
+      LANGFUSE_INIT_USER_PASSWORD: "changeme"
+      LANGFUSE_INIT_USER_NAME: "Admin"
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/public/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # ── AMPS MCP HTTP Server ───────────────────────────────────────────────────
+  # Reuses the main agentic-ai-phase3 image (MCP scripts live at /app/src/mcp_server/).
+  # MCP_TRANSPORT=http switches the __main__ to HTTP/SSE mode instead of stdio.
+  amps-mcp-http:
+    image: agentic-ai-phase3:latest
+    container_name: amps-mcp-http-phase5
+    working_dir: /app/src/mcp_server
+    command: ["python", "amps_mcp_server.py"]
+    ports:
+      - "9100:9100"
+    environment:
+      <<: *mcp-env
+      MCP_SERVER_ID: amps-mcp
+      MCP_PORT: "9100"
+      MCP_HOST_URL: http://amps-mcp-http:9100
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9100/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── KDB MCP HTTP Server ────────────────────────────────────────────────────
+  kdb-mcp-http:
+    image: agentic-ai-phase3:latest
+    container_name: kdb-mcp-http-phase5
+    working_dir: /app/src/mcp_server
+    command: ["python", "kdb_mcp_server.py"]
+    ports:
+      - "9101:9101"
+    environment:
+      <<: *mcp-env
+      MCP_SERVER_ID: kdb-mcp
+      MCP_PORT: "9101"
+      MCP_HOST_URL: http://kdb-mcp-http:9101
+    volumes:
+      - ../repo-api/data:/app/data:ro
+    depends_on:
+      localstack:
+        condition: service_healthy
+      amps-mcp-http:
+        condition: service_started
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9101/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── Portfolio MCP HTTP Server ──────────────────────────────────────────────
+  portfolio-mcp-http:
+    image: agentic-ai-phase3:latest
+    container_name: portfolio-mcp-http-phase5
+    working_dir: /app/src/mcp_server
+    command: ["python", "portfolio_mcp_server.py"]
+    ports:
+      - "9102:9102"
+    environment:
+      <<: *mcp-env
+      MCP_SERVER_ID: portfolio-mcp
+      MCP_PORT: "9102"
+      MCP_HOST_URL: http://portfolio-mcp-http:9102
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9102/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── CDS MCP HTTP Server ────────────────────────────────────────────────────
+  cds-mcp-http:
+    image: agentic-ai-phase3:latest
+    container_name: cds-mcp-http-phase5
+    working_dir: /app/src/mcp_server
+    command: ["python", "cds_mcp_server.py"]
+    ports:
+      - "9103:9103"
+    environment:
+      <<: *mcp-env
+      MCP_SERVER_ID: cds-mcp
+      MCP_PORT: "9103"
+      MCP_HOST_URL: http://cds-mcp-http:9103
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9103/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── ETF MCP HTTP Server ────────────────────────────────────────────────────
+  etf-mcp-http:
+    image: agentic-ai-phase3:latest
+    container_name: etf-mcp-http-phase5
+    working_dir: /app/src/mcp_server
+    command: ["python", "etf_mcp_server.py"]
+    ports:
+      - "9104:9104"
+    environment:
+      <<: *mcp-env
+      MCP_SERVER_ID: etf-mcp
+      MCP_PORT: "9104"
+      MCP_HOST_URL: http://etf-mcp-http:9104
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9104/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── MCP Gateway ────────────────────────────────────────────────────────────
+  mcp-gateway:
+    image: agentic-ai-phase3:latest
+    container_name: mcp-gateway-phase5
+    command: ["python", "-m", "src.mcp_gateway.gateway"]
+    ports:
+      - "9000:9000"
+    environment:
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      MCP_REGISTRY_TABLE: agentic-ai-staging-mcp-registry
+      MCP_GATEWAY_PORT: "9000"
+      MCP_GATEWAY_API_KEY: ""   # empty = no auth (dev mode)
+    depends_on:
+      localstack:
+        condition: service_healthy
+      amps-mcp-http:
+        condition: service_healthy
+      kdb-mcp-http:
+        condition: service_healthy
+      portfolio-mcp-http:
+        condition: service_healthy
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+networks:
+  default:
+    name: agentic-ai-phase5-net
+
+volumes:
+  langfuse-db-data:

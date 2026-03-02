@@ -16,7 +16,7 @@ from strands import Agent
 from src.agents.model_factory import get_strands_fast_model
 from src.mcp_clients import open_portfolio_tools
 
-_SYSTEM_PROMPT = """You are a Portfolio Analytics specialist.
+_SYSTEM_PROMPT_DEFAULT = """You are a Portfolio Analytics specialist.
 You have access to live portfolio positions across 5 fixed income portfolios:
   HY_MAIN (High Yield), IG_CORE (Investment Grade), EM_BLEND (Emerging Markets),
   RATES_GOV (Government), MULTI_STRAT (Multi-Strategy).
@@ -60,6 +60,9 @@ def run_portfolio_agent(query: str) -> str:
 
     Returns an error message string if Portfolio is disabled.
     """
+    from src.agents.prompt_registry import get_system_prompt
+    system_prompt = get_system_prompt("portfolio-agent-system-prompt", _SYSTEM_PROMPT_DEFAULT)
+
     with open_portfolio_tools() as portfolio_tools:
         if not portfolio_tools:
             return (
@@ -69,7 +72,7 @@ def run_portfolio_agent(query: str) -> str:
 
         agent = Agent(
             model=get_strands_fast_model(),
-            system_prompt=_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             tools=portfolio_tools,
         )
         result = agent(query)

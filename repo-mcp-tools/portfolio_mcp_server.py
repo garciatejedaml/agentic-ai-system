@@ -361,4 +361,12 @@ async def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-    asyncio.run(main())
+    if os.getenv("MCP_TRANSPORT", "stdio") == "http":
+        import sys as _sys
+        _sys.path.insert(0, os.path.dirname(__file__))
+        from mcp_http_server import run_http_server
+        _tools = ["portfolio_list", "portfolio_holdings", "portfolio_exposure", "portfolio_concentration"]
+        run_http_server(server, server_id="portfolio-mcp", tools=_tools,
+                        port=int(os.getenv("MCP_PORT", "9102")))
+    else:
+        asyncio.run(main())

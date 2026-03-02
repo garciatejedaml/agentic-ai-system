@@ -411,4 +411,12 @@ async def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-    asyncio.run(main())
+    if os.getenv("MCP_TRANSPORT", "stdio") == "http":
+        import sys as _sys
+        _sys.path.insert(0, os.path.dirname(__file__))
+        from mcp_http_server import run_http_server
+        _tools = ["kdb_list_tables", "kdb_get_schema", "kdb_query", "kdb_rfq_analytics"]
+        run_http_server(server, server_id="kdb-mcp", tools=_tools,
+                        port=int(os.getenv("MCP_PORT", "9101")))
+    else:
+        asyncio.run(main())

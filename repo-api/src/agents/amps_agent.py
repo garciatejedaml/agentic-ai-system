@@ -18,7 +18,7 @@ from src.agents.model_factory import get_strands_fast_model
 from src.agents.tools import search_knowledge_base
 from src.mcp_clients import open_amps_tools
 
-_SYSTEM_PROMPT = """You are an AMPS (Advanced Message Processing System) specialist.
+_SYSTEM_PROMPT_DEFAULT = """You are an AMPS (Advanced Message Processing System) specialist.
 You have direct access to live AMPS pub/sub servers used for real-time financial data.
 
 ## Your tools
@@ -73,6 +73,9 @@ def run_amps_agent(query: str) -> str:
 
     Returns an error message string if AMPS is disabled or unavailable.
     """
+    from src.agents.prompt_registry import get_system_prompt
+    system_prompt = get_system_prompt("amps-agent-system-prompt", _SYSTEM_PROMPT_DEFAULT)
+
     with open_amps_tools() as amps_tools:
         if not amps_tools:
             return (
@@ -82,7 +85,7 @@ def run_amps_agent(query: str) -> str:
 
         agent = Agent(
             model=get_strands_fast_model(),
-            system_prompt=_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             tools=[search_knowledge_base, *amps_tools],
         )
         result = agent(query)

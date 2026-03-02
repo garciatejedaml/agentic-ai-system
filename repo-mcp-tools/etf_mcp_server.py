@@ -358,4 +358,12 @@ async def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-    asyncio.run(main())
+    if os.getenv("MCP_TRANSPORT", "stdio") == "http":
+        import sys as _sys
+        _sys.path.insert(0, os.path.dirname(__file__))
+        from mcp_http_server import run_http_server
+        _tools = ["etf_list", "etf_details", "etf_flows", "etf_top_holdings"]
+        run_http_server(server, server_id="etf-mcp", tools=_tools,
+                        port=int(os.getenv("MCP_PORT", "9104")))
+    else:
+        asyncio.run(main())
