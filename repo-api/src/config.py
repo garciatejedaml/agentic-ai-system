@@ -115,6 +115,10 @@ class Config:
     # Debug
     LANGGRAPH_DEBUG: bool = os.getenv("LANGGRAPH_DEBUG", "false").lower() == "true"
 
+    # Demo mode — pre-scripted responses for presentations (no API key needed)
+    # Unmatched queries fall through to LLM_PROVIDER (ollama or mock as fallback)
+    DEMO_MODE_ENABLED: bool = os.getenv("DEMO_MODE_ENABLED", "false").lower() == "true"
+
     @classmethod
     def is_local(cls) -> bool:
         return cls.LLM_PROVIDER in ("anthropic", "ollama", "mock")

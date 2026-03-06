@@ -279,6 +279,23 @@ async def chat_completions(request: ChatRequest):
         history = []
         logger.info("[session:%s] New session for user %s", session_id, user_id)
 
+    # ── 3b. Demo mode — serve pre-scripted response if query matches ─────────
+    if config.DEMO_MODE_ENABLED:
+        from src.agents.demo_responses import get_demo_response
+        demo_content = get_demo_response(user_message)
+        if demo_content:
+            logger.info("[DEMO] Scripted response for: %.60s", user_message)
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(
+                _executor, save_session, session_id, user_message, demo_content, user_id, desk_name
+            )
+            if request.stream:
+                return StreamingResponse(
+                    _stream_response(demo_content, request.model, session_id),
+                    media_type="text/event-stream",
+                )
+            return _build_response(demo_content, request.model, session_id)
+
     # ── 4. Build enriched query with conversation context ────────────────────
     context_str = build_context_string(history)
     if context_str:
