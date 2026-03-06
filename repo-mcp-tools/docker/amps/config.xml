@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AMPS Core Server — positions / orders / market-data
+
+  Ports (internal — Docker maps these to host ports):
+    8085  HTTP admin  (amps.json, topics.json, clients.json)
+    9007  TCP JSON transport
+
+  SOW Topics:
+    positions   → latest position per trader+bond    (key: /id)
+    orders      → latest order state                  (key: /order_id)
+    market-data → latest bid/ask/mid per bond symbol  (key: /symbol)
+
+  Phase 3 product topics live on separate AMPS instances:
+    amps-portfolio  →  config-portfolio.xml  (portfolio_nav)
+    amps-cds        →  config-cds.xml        (cds_spreads)
+    amps-etf        →  config-etf.xml        (etf_nav)
+    amps-risk       →  config-risk.xml       (risk_metrics)
+-->
+<AMPSConfig>
+  <Name>amps-core</Name>
+
+  <Admin>
+    <InetAddr>0.0.0.0:8085</InetAddr>
+  </Admin>
+
+  <Transports>
+    <Transport>
+      <Name>tcp-json</Name>
+      <Type>tcp</Type>
+      <InetAddr>0.0.0.0:9007</InetAddr>
+      <MessageType>json</MessageType>
+    </Transport>
+  </Transports>
+
+  <SOW>
+    <Topic>
+      <Name>positions</Name>
+      <MessageType>json</MessageType>
+      <Key>/id</Key>
+      <FileName>sow/positions.sow</FileName>
+    </Topic>
+
+    <Topic>
+      <Name>orders</Name>
+      <MessageType>json</MessageType>
+      <Key>/order_id</Key>
+      <FileName>sow/orders.sow</FileName>
+    </Topic>
+
+    <Topic>
+      <Name>market-data</Name>
+      <MessageType>json</MessageType>
+      <Key>/symbol</Key>
+      <FileName>sow/market-data.sow</FileName>
+    </Topic>
+  </SOW>
+
+</AMPSConfig>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AMPS Risk Server — risk_metrics
+
+  Instance: amps-risk
+  Ports (internal — Docker maps these to host):
+    8085  HTTP admin
+    9007  TCP JSON transport
+
+  Host port mapping (docker-compose.amps.yml):
+    8089  → 8085  (admin)
+    9011  → 9007  (TCP)
+
+  SOW Topics:
+    risk_metrics → VaR (95%/99%), DV01, CS01 per portfolio
+                   (key: /portfolio_id)
+
+  Publisher:  product_publishers.py  (AMPS_RISK_HOST / AMPS_RISK_PORT)
+  Data scope: 5 portfolios — same key space as portfolio_nav
+              Metrics: var_95_usd, var_99_usd, var_95_pct, var_99_pct,
+                       dv01_usd, cs01_usd, avg_duration, avg_spread_bps
+-->
+<AMPSConfig>
+  <Name>amps-risk</Name>
+
+  <Admin>
+    <InetAddr>0.0.0.0:8085</InetAddr>
+  </Admin>
+
+  <Transports>
+    <Transport>
+      <Name>tcp-json</Name>
+      <Type>tcp</Type>
+      <InetAddr>0.0.0.0:9007</InetAddr>
+      <MessageType>json</MessageType>
+    </Transport>
+  </Transports>
+
+  <SOW>
+    <Topic>
+      <Name>risk_metrics</Name>
+      <MessageType>json</MessageType>
+      <Key>/portfolio_id</Key>
+      <FileName>sow/risk_metrics.sow</FileName>
+    </Topic>
+  </SOW>
+
+</AMPSConfig>
