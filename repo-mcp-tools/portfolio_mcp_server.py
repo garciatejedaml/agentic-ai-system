@@ -360,6 +360,7 @@ async def main():
 
 
 if __name__ == "__main__":
+    import os
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
     if os.getenv("MCP_TRANSPORT", "stdio") == "http":
         import sys as _sys

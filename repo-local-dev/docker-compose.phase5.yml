@@ -1,6 +1,13 @@
 # ── Phase 5: MCP Gateway + Auto-Registration + Langfuse Prompt Management ─────
 #
-# Extends Phase 3 with:
+# Standalone compose — connects to the running Phase 3 network as external.
+# Phase 3 must be running first:
+#   docker compose -f repo-local-dev/docker-compose.phase3.yml --env-file .env up -d
+#
+# Then start Phase 5 (from monorepo root):
+#   docker compose -f repo-local-dev/docker-compose.phase5.yml --env-file .env up -d
+#
+# New services:
 #   Langfuse (self-hosted)  :3000   Prompt management UI + tracing
 #   amps-mcp-http           :9100   AMPS MCP server (HTTP/SSE, auto-registers)
 #   kdb-mcp-http            :9101   KDB MCP server  (HTTP/SSE, auto-registers)
@@ -8,11 +15,6 @@
 #   cds-mcp-http            :9103   CDS MCP         (HTTP/SSE, auto-registers)
 #   etf-mcp-http            :9104   ETF MCP         (HTTP/SSE, auto-registers)
 #   mcp-gateway             :9000   Unified MCP entry point (aggregates all tools)
-#
-# Usage (from monorepo root):
-#   docker compose -f repo-local-dev/docker-compose.phase3.yml \
-#                  -f repo-local-dev/docker-compose.phase5.yml \
-#                  --env-file .env up -d
 #
 # Langfuse UI:
 #   open http://localhost:3000
@@ -34,20 +36,16 @@
 
 name: agentic-ai-phase5
 
-# ── Langfuse keys must match .env (or set LANGFUSE_INIT_* below manually) ─────
-# The self-hosted Langfuse instance is pre-configured with the keys from .env.
-# Agents will call http://langfuse:3000 inside the container network.
-
 x-mcp-env: &mcp-env
   MCP_TRANSPORT: "http"
   AWS_DEFAULT_REGION: us-east-1
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
-  AWS_ENDPOINT_URL: http://localstack:4566
+  # localstack-phase3 is the container name on the shared phase3 network
+  AWS_ENDPOINT_URL: http://localstack-phase3:4566
   MCP_REGISTRY_TABLE: agentic-ai-staging-mcp-registry
   KDB_MODE: poc
   KDB_DATA_PATH: /app/data/kdb
-  # AMPS defaults (no live AMPS in local dev)
   AMPS_HOST: host.docker.internal
   AMPS_PORT: "9007"
   AMPS_ADMIN_PORT: "8085"
@@ -69,7 +67,7 @@ services:
     volumes:
       - langfuse-db-data:/var/lib/postgresql/data
     networks:
-      - default
+      - phase5-internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U langfuse"]
       interval: 10s
@@ -78,8 +76,10 @@ services:
     restart: unless-stopped
 
   # ── Langfuse Server ────────────────────────────────────────────────────────
+  # Using v2 — v3 requires ClickHouse (extra dep). v2 prompt management API
+  # is fully compatible with the langfuse>=3.0.0 Python SDK.
   langfuse:
-    image: langfuse/langfuse:3
+    image: langfuse/langfuse:2
     container_name: langfuse-phase5
     ports:
       - "3000:3000"
@@ -89,8 +89,6 @@ services:
       SALT: phase5-local-salt
       NEXTAUTH_URL: http://localhost:3000
       TELEMETRY_ENABLED: "false"
-      # Pre-configure a project with keys matching .env
-      # These keys are used by agents to push prompts and traces.
       LANGFUSE_INIT_ORG_ID: "org-agentic-ai"
       LANGFUSE_INIT_ORG_NAME: "Agentic AI System"
       LANGFUSE_INIT_PROJECT_ID: "proj-agentic-ai"
@@ -104,7 +102,7 @@ services:
       langfuse-db:
         condition: service_healthy
     networks:
-      - default
+      - phase5-internal
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:3000/api/public/health || exit 1"]
       interval: 15s
@@ -120,19 +118,18 @@ services:
     image: agentic-ai-phase3:latest
     container_name: amps-mcp-http-phase5
     working_dir: /app/src/mcp_server
-    command: ["python", "amps_mcp_server.py"]
+    entrypoint: ["python"]
+    command: ["amps_mcp_server.py"]
     ports:
       - "9100:9100"
     environment:
       <<: *mcp-env
       MCP_SERVER_ID: amps-mcp
       MCP_PORT: "9100"
-      MCP_HOST_URL: http://amps-mcp-http:9100
-    depends_on:
-      localstack:
-        condition: service_healthy
+      MCP_HOST_URL: http://amps-mcp-http-phase5:9100
     networks:
-      - default
+      - phase5-internal
+      - phase3-net
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9100/health || exit 1"]
       interval: 15s
@@ -146,23 +143,20 @@ services:
     image: agentic-ai-phase3:latest
     container_name: kdb-mcp-http-phase5
     working_dir: /app/src/mcp_server
-    command: ["python", "kdb_mcp_server.py"]
+    entrypoint: ["python"]
+    command: ["kdb_mcp_server.py"]
     ports:
       - "9101:9101"
     environment:
       <<: *mcp-env
       MCP_SERVER_ID: kdb-mcp
       MCP_PORT: "9101"
-      MCP_HOST_URL: http://kdb-mcp-http:9101
+      MCP_HOST_URL: http://kdb-mcp-http-phase5:9101
     volumes:
       - ../repo-api/data:/app/data:ro
-    depends_on:
-      localstack:
-        condition: service_healthy
-      amps-mcp-http:
-        condition: service_started
     networks:
-      - default
+      - phase5-internal
+      - phase3-net
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9101/health || exit 1"]
       interval: 15s
@@ -176,19 +170,18 @@ services:
     image: agentic-ai-phase3:latest
     container_name: portfolio-mcp-http-phase5
     working_dir: /app/src/mcp_server
-    command: ["python", "portfolio_mcp_server.py"]
+    entrypoint: ["python"]
+    command: ["portfolio_mcp_server.py"]
     ports:
       - "9102:9102"
     environment:
       <<: *mcp-env
       MCP_SERVER_ID: portfolio-mcp
       MCP_PORT: "9102"
-      MCP_HOST_URL: http://portfolio-mcp-http:9102
-    depends_on:
-      localstack:
-        condition: service_healthy
+      MCP_HOST_URL: http://portfolio-mcp-http-phase5:9102
     networks:
-      - default
+      - phase5-internal
+      - phase3-net
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9102/health || exit 1"]
       interval: 15s
@@ -202,19 +195,18 @@ services:
     image: agentic-ai-phase3:latest
     container_name: cds-mcp-http-phase5
     working_dir: /app/src/mcp_server
-    command: ["python", "cds_mcp_server.py"]
+    entrypoint: ["python"]
+    command: ["cds_mcp_server.py"]
     ports:
       - "9103:9103"
     environment:
       <<: *mcp-env
       MCP_SERVER_ID: cds-mcp
       MCP_PORT: "9103"
-      MCP_HOST_URL: http://cds-mcp-http:9103
-    depends_on:
-      localstack:
-        condition: service_healthy
+      MCP_HOST_URL: http://cds-mcp-http-phase5:9103
     networks:
-      - default
+      - phase5-internal
+      - phase3-net
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9103/health || exit 1"]
       interval: 15s
@@ -228,19 +220,18 @@ services:
     image: agentic-ai-phase3:latest
     container_name: etf-mcp-http-phase5
     working_dir: /app/src/mcp_server
-    command: ["python", "etf_mcp_server.py"]
+    entrypoint: ["python"]
+    command: ["etf_mcp_server.py"]
     ports:
       - "9104:9104"
     environment:
       <<: *mcp-env
       MCP_SERVER_ID: etf-mcp
       MCP_PORT: "9104"
-      MCP_HOST_URL: http://etf-mcp-http:9104
-    depends_on:
-      localstack:
-        condition: service_healthy
+      MCP_HOST_URL: http://etf-mcp-http-phase5:9104
     networks:
-      - default
+      - phase5-internal
+      - phase3-net
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9104/health || exit 1"]
       interval: 15s
@@ -253,20 +244,20 @@ services:
   mcp-gateway:
     image: agentic-ai-phase3:latest
     container_name: mcp-gateway-phase5
-    command: ["python", "-m", "src.mcp_gateway.gateway"]
+    working_dir: /app
+    entrypoint: ["python"]
+    command: ["-m", "src.mcp_gateway.gateway"]
     ports:
       - "9000:9000"
     environment:
       AWS_DEFAULT_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_ENDPOINT_URL: http://localstack-phase3:4566
       MCP_REGISTRY_TABLE: agentic-ai-staging-mcp-registry
       MCP_GATEWAY_PORT: "9000"
       MCP_GATEWAY_API_KEY: ""   # empty = no auth (dev mode)
     depends_on:
-      localstack:
-        condition: service_healthy
       amps-mcp-http:
         condition: service_healthy
       kdb-mcp-http:
@@ -274,7 +265,8 @@ services:
       portfolio-mcp-http:
         condition: service_healthy
     networks:
-      - default
+      - phase5-internal
+      - phase3-net
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9000/health || exit 1"]
       interval: 15s
@@ -284,8 +276,11 @@ services:
     restart: unless-stopped
 
 networks:
-  default:
-    name: agentic-ai-phase5-net
+  phase5-internal:
+    name: agentic-ai-phase5-internal
+  phase3-net:
+    name: agentic-ai-phase3_default
+    external: true   # connects to the running Phase 3 network (localstack-phase3)
 
 volumes:
   langfuse-db-data:
