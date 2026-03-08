@@ -8,10 +8,11 @@ A production-grade multi-agent financial data platform built with **LangGraph**,
 
 1. [Architecture Overview](#architecture-overview)
 2. [Repository Structure](#repository-structure)
-3. [Local Development — Quick Start](#local-development--quick-start)
-4. [AWS Deployment — Step by Step](#aws-deployment--step-by-step)
-5. [Phase History](#phase-history)
-6. [Troubleshooting](#troubleshooting)
+3. [Demo Mode — No API Key Required](#demo-mode--no-api-key-required)
+4. [Local Development — Quick Start](#local-development--quick-start)
+5. [AWS Deployment — Step by Step](#aws-deployment--step-by-step)
+6. [Phase History](#phase-history)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -160,7 +161,9 @@ repo-api/
 | `anthropic` | Local dev (best quality) | `ANTHROPIC_API_KEY` required |
 | `ollama` | Local dev (free, no key) | None — Ollama running natively |
 | `bedrock` | AWS production | None — IAM role on ECS task |
-| `mock` | CI / infra testing | None — canned responses |
+| `mock` | CI / infra testing | None — canned generic responses |
+
+> **Demo mode** (`DEMO_MODE_ENABLED=true`) works on top of any provider. Scripted financial responses are served instantly for matched queries; unmatched queries fall through to the selected `LLM_PROVIDER`. See [Demo Mode](#demo-mode--no-api-key-required).
 
 ---
 
@@ -271,6 +274,168 @@ repo-infra/
 ├── autoscaling.tf      # CPU/memory auto-scaling for api-service (1–4 tasks)
 ├── opensearch.tf       # Amazon OpenSearch Service (t3.small staging / m6g.large prod)
 └── cross_region.tf     # Route53 health check + DynamoDB Global Tables replica
+```
+
+---
+
+## Demo Mode — No API Key Required
+
+Demo mode serves pre-scripted, realistic financial responses **without any LLM API call**. Designed for presentations on corporate machines where API keys are unavailable or internet access is restricted.
+
+### How it works
+
+```
+Your query  →  API (server.py)
+                  │
+                  ▼
+          DEMO_MODE_ENABLED check
+                  │
+        ┌─────────┴──────────┐
+        │                    │
+   keyword match?       no match
+        │                    │
+        ▼                    ▼
+  scripted response    LLM_PROVIDER
+  (instant, no LLM)   (ollama / mock)
+```
+
+1. Every incoming query is checked against 10 pre-scripted financial scenarios in [`demo_responses.py`](repo-api/src/agents/demo_responses.py)
+2. If a keyword matches → returns the scripted response **instantly** (no LLM, no network, no API key)
+3. If no match → falls through to `LLM_PROVIDER` (use `mock` for a safe generic fallback, or `ollama` for real intelligence on off-script questions)
+
+### Demo scenarios
+
+| Query keywords | What you get |
+|----------------|-------------|
+| `portfolios`, `list portfolios`, `show portfolios` | Overview of all 5 portfolios with NAV ($1.34B total) |
+| `hy`, `high yield`, `hy_main` | HY_MAIN top 10 holdings — Ford, Sprint, Carnival, etc. |
+| `ig`, `investment grade`, `ig_core` | IG_CORE top 10 — Apple, JPMorgan, Microsoft |
+| `em`, `emerging`, `em_blend` | EM_BLEND exposure by sector — Brazil, Mexico, Indonesia |
+| `cds`, `credit default swap`, `spread` | CDS spread table — 50 entities from distressed (Ukraine 1,854 bps) to IG (MSFT 18 bps) |
+| `rfq`, `trader`, `hit rate`, `kdb` | Top traders by hit rate — desk rankings, RFQ volume, notional |
+| `etf`, `etf flows`, `fund flows` | ETF flow data — LQD, HYG, TLT, AGG, EMB inflows/outflows |
+| `var`, `risk`, `dv01`, `p&l`, `pnl` | Risk & P&L dashboard — VaR, DV01, CS01, stress scenarios |
+| `rates`, `treasury`, `rates_gov` | RATES_GOV holdings — UST, Agency, TIPS curve positioning |
+| `help`, `capabilities`, `what can you do`, `demo` | System overview — architecture, what each agent does |
+
+### Setup on a corporate VDI (no internet API key needed)
+
+**Prerequisites:**
+- Docker Desktop installed and running (4 GB RAM minimum)
+- Git access to this repository
+- No API key, no internet required for demo queries
+
+**Step 1 — Clone the repo**
+```bash
+git clone https://github.com/garciatejedaml/agentic-ai-system.git
+cd agentic-ai-system
+```
+
+**Step 2 — Configure `.env`**
+```bash
+cp .env.example .env
+```
+
+Open `.env` and set:
+```bash
+# ── Demo mode ─────────────────────────────────────────────────
+DEMO_MODE_ENABLED=true
+
+# ── LLM fallback for off-script questions ─────────────────────
+LLM_PROVIDER=mock        # safest — no dependencies, works fully offline
+# LLM_PROVIDER=ollama    # better — real intelligence for off-script questions
+                         # (requires: brew install ollama && ollama pull llama3.2:3b)
+```
+
+Leave all other vars (ANTHROPIC_API_KEY, etc.) empty or as-is — they are not used in demo mode.
+
+**Step 3 — Build the image** *(~5 min first time)*
+```bash
+docker compose -f repo-local-dev/docker-compose.phase3.yml build
+```
+
+**Step 4 — Start the stack**
+```bash
+docker compose -f repo-local-dev/docker-compose.phase3.yml --env-file .env up -d
+
+# Watch startup (takes ~60–90s — OpenSearch + RAG ingest):
+docker compose -f repo-local-dev/docker-compose.phase3.yml logs -f api-service
+# Ready when you see: "Application startup complete"
+```
+
+**Step 5 — Verify**
+```bash
+curl http://localhost:8000/
+# Expected: {"status":"ok","service":"Agentic AI System","version":"2.0.0"}
+```
+
+**Step 6 — Run demo queries**
+```bash
+# Portfolio overview (scripted, instant)
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"x","messages":[{"role":"user","content":"show me the portfolios"}]}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
+
+# High Yield holdings
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"x","messages":[{"role":"user","content":"show me high yield holdings"}]}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
+
+# CDS spreads
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"x","messages":[{"role":"user","content":"CDS spreads"}]}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
+
+# Top traders by hit rate
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"x","messages":[{"role":"user","content":"who are the top traders by hit rate?"}]}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
+
+# Risk & VaR
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"x","messages":[{"role":"user","content":"show me VaR and risk metrics"}]}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
+
+# System overview (good opening slide)
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"x","messages":[{"role":"user","content":"what can you do?"}]}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
+```
+
+### Using with continue.dev or a chat UI
+
+The API is **OpenAI-compatible**. Point any tool that accepts a custom base URL:
+
+```
+Base URL:  http://localhost:8000/v1
+API Key:   demo          (any non-empty string)
+Model:     agentic-ai    (any string)
+```
+
+For **continue.dev** (`~/.continue/config.json`):
+```json
+{
+  "models": [{
+    "title": "Agentic AI (Demo)",
+    "provider": "openai",
+    "model": "agentic-ai",
+    "apiBase": "http://localhost:8000/v1",
+    "apiKey": "demo"
+  }]
+}
+```
+
+### Stop the demo stack
+
+```bash
+docker compose -f repo-local-dev/docker-compose.phase3.yml down
+# Add -v to also wipe OpenSearch/DynamoDB data (needed for a clean restart)
 ```
 
 ---
@@ -914,6 +1079,8 @@ terraform -chdir=repo-infra destroy
 | `phase/2-a2a-orchestration` | A2A agents, DynamoDB registry, financial orchestrator |
 | `phase/3-llm-router-parallel` | LLM Router, 4 specialist agents, OpenSearch RAG, AMPS topics |
 | `phase/4-guardrails-multiregion` | Dynatrace OTel, guardrails, cross-region failover, rate limiting |
+| `phase/5-mcp-gateway-prompt-registry` | MCP Gateway, HTTP/SSE transport, DynamoDB auto-registration, Langfuse prompt management |
+| `phase/6-demo-mode` | Demo mode with pre-scripted financial responses (no API key required), Ollama fallback |
 
 ---
 
