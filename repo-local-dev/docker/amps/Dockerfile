@@ -1,20 +1,20 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # AMPS Server – Linux x86_64 (runs on M1 Mac via Docker --platform linux/amd64)
 #
-# PREREQUISITE: Place the AMPS Linux tarball in this directory as AMPS.tar
+# PREREQUISITE: Place the AMPS Linux tarball in this directory.
+#   Accepts any filename matching AMPS*.tar* (e.g. AMPS-5.3.5.60-Release-Linux.tar.gz)
 #   1. Register at https://crankuptheamps.com/evaluate
 #   2. Download the Linux x86_64 distribution
-#   3. Copy it here: docker/amps/AMPS.tar
+#   3. Copy it here: repo-local-dev/docker/amps/
 #
 # Build & run:
-#   docker compose -f docker-compose.amps.yml up -d
+#   docker compose --profile amps build
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Stage 1: extract AMPS from tarball
-# NOTE: Use COPY (not ADD) to prevent Docker from auto-extracting the tarball
 FROM --platform=linux/amd64 ubuntu:22.04 AS builder
-COPY AMPS.tar /binaries/AMPS.tar
-RUN tar xvf /binaries/AMPS.tar -C / --transform='s,AMPS[^/]*/,AMPS/,'
+COPY AMPS*.tar* /binaries/amps.tar
+RUN tar xvf /binaries/amps.tar -C / --transform='s,AMPS[^/]*/,AMPS/,'
 
 # Stage 2: minimal runtime image
 FROM --platform=linux/amd64 ubuntu:22.04

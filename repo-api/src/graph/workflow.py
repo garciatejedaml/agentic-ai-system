@@ -33,8 +33,7 @@ def build_graph() -> StateGraph:
     graph.add_edge("strands", "format")
     graph.add_edge("format", END)
 
-    # recursion_limit guards against accidental infinite cycles (Phase 4 guardrail)
-    return graph.compile(recursion_limit=config.GRAPH_RECURSION_LIMIT)
+    return graph.compile()
 
 
 # ── Public helpers ────────────────────────────────────────────────────────────
@@ -71,7 +70,10 @@ def run_query(query: str) -> dict:
         "error": None,
     }
 
+    from src.config import config
     langfuse_cb = get_langfuse_callback()
-    invoke_config = {"callbacks": [langfuse_cb]} if langfuse_cb else {}
+    invoke_config: dict = {"recursion_limit": config.GRAPH_RECURSION_LIMIT}
+    if langfuse_cb:
+        invoke_config["callbacks"] = [langfuse_cb]
 
     return graph.invoke(initial_state, config=invoke_config)
