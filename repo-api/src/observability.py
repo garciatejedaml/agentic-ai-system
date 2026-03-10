@@ -83,6 +83,8 @@ def setup_observability() -> None:
             )
 
     # ── Langfuse exporter ─────────────────────────────────────────────────────
+    # Langfuse v3 SDK sends traces via OTEL to /api/public/otel/v1/traces.
+    # Requires Langfuse server v3 (ClickHouse-backed).
     if config.LANGFUSE_PUBLIC_KEY and config.LANGFUSE_SECRET_KEY:
         try:
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import (

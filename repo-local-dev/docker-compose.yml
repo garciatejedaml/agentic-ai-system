@@ -73,48 +73,23 @@ x-api-image: &api-image
 
 # ── Common environment for all agent services ─────────────────────────────────
 x-common-env: &common-env
-  # LLM provider: ollama (default, no key needed) | anthropic | mock
   LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
-  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-  ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
-  ANTHROPIC_FAST_MODEL: ${ANTHROPIC_FAST_MODEL:-claude-haiku-4-5-20251001}
   OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-  OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
-  OLLAMA_FAST_MODEL: ${OLLAMA_FAST_MODEL:-llama3.2}
-  # Demo mode: pre-scripted financial responses (no LLM call for matched queries)
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   DEMO_MODE_ENABLED: ${DEMO_MODE_ENABLED:-false}
-  # AWS / LocalStack
   AWS_DEFAULT_REGION: us-east-1
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
   AWS_ENDPOINT_URL: http://localstack:4566
-  AGENT_REGISTRY_TABLE: agentic-ai-staging-agent-registry
-  # Data sources
   KDB_ENABLED: "true"
-  KDB_MODE: poc
-  KDB_DATA_PATH: /app/data/kdb
-  AMPS_ENABLED: "false"
-  PORTFOLIO_ENABLED: "true"
-  CDS_ENABLED: "true"
-  ETF_ENABLED: "true"
-  # RAG (OpenSearch) — graceful fallback if unavailable
-  OPENSEARCH_URL: http://opensearch:9200
-  OPENSEARCH_INDEX: knowledge_base
-  # Observability (disabled by default)
-  OBSERVABILITY_ENABLED: "false"
-  LANGFUSE_PUBLIC_KEY: ""
-  LANGFUSE_SECRET_KEY: ""
-  LANGFUSE_HOST: ""
-  DYNATRACE_ENDPOINT: ""
-  DYNATRACE_API_TOKEN: ""
-  # Guardrails
-  AGENT_MAX_ITERATIONS: "15"
-  GRAPH_RECURSION_LIMIT: "25"
-  AGENT_TIMEOUT_DEFAULT: "60"
-  AGENT_TIMEOUT_KDB: "90"
-  AGENT_TIMEOUT_AMPS: "30"
-  AGENT_TIMEOUT_RISK_PNL: "90"
   RATE_LIMIT_ENABLED: "false"
+  OPENSEARCH_URL: http://opensearch:9200
+  OBSERVABILITY_ENABLED: ${OBSERVABILITY_ENABLED:-true}
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
+  LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse-web:3000}
+  PHOENIX_ENDPOINT: ""
 
 # ── Base for all agent containers (same image, different AGENT_SERVICE) ────────
 x-agent-base: &agent-base
@@ -187,6 +162,9 @@ services:
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
     ports:
       - "8000:8000"
+    networks:
+      - default
+      - observability
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 20s
@@ -498,3 +476,9 @@ volumes:
   amps_cds_sow:
   amps_etf_sow:
   amps_risk_sow:
+
+networks:
+  default: {}
+  observability:
+    external: true
+    name: agentic-ai-observability_observability

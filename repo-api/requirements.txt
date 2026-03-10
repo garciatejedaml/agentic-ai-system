@@ -43,7 +43,7 @@ uvicorn[standard]>=0.30.0
 opentelemetry-sdk>=1.25.0
 opentelemetry-exporter-otlp-proto-http>=1.25.0
 # Langfuse: graph view for LangGraph + metrics dashboard (self-hostable)
-langfuse>=3.0.0
+langfuse>=3.0.0,<4.0.0
 # Phoenix / Arize: RAG chunk analysis + span view (single Docker container)
 # arize-phoenix-otel>=0.7.0  # No compatible con Python 3.14 aún
 # openinference-instrumentation-langchain>=0.3.0  # No compatible con Python 3.14 aún
