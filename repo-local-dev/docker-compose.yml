@@ -1,0 +1,500 @@
+# ── Agentic AI System — Unified Local Dev Compose ─────────────────────────────
+#
+# PROFILES — pick one or combine:
+#
+#   demo    → API + LocalStack only. No LLM key needed.
+#             Set DEMO_MODE_ENABLED=true in .env for pre-scripted responses.
+#             Set LLM_PROVIDER=ollama to use local LLaMA.
+#
+#   agents  → demo + all specialist agents (KDB, Portfolio, CDS, ETF, Risk, AMPS agent).
+#             Requires Ollama or an Anthropic API key.
+#
+#   amps    → 5 AMPS server instances + publishers (live market data).
+#             Requires AMPS binary: place AMPS.tar in docker/amps/ before building.
+#             Run alongside `agents` to enable real-time data.
+#
+#   rag     → OpenSearch vector store for RAG.
+#             Optional — system works without it (graceful fallback).
+#
+# ── Quick start ────────────────────────────────────────────────────────────────
+#
+#   # 1. Build the main image (once, or after code changes):
+#   docker compose build
+#
+#   # 2. Build AMPS image (only if you have the AMPS.tar binary):
+#   docker compose --profile amps build
+#
+#   # Demo mode (no API key):
+#   docker compose --profile demo up -d
+#
+#   # Full agents + Ollama:
+#   docker compose --profile agents up -d
+#
+#   # Full agents + AMPS live data:
+#   docker compose --profile agents --profile amps up -d
+#
+#   # Add RAG to any of the above:
+#   docker compose --profile agents --profile rag up -d
+#
+#   # Stop everything:
+#   docker compose --profile demo --profile agents --profile amps --profile rag down
+#
+# ── Ports ──────────────────────────────────────────────────────────────────────
+#   8000  api-service           (OpenAI-compatible endpoint)
+#   8001  kdb-agent
+#   8002  amps-agent
+#   8003  financial-orchestrator
+#   8004  portfolio-agent
+#   8005  cds-agent
+#   8006  etf-agent
+#   8007  risk-pnl-agent
+#   4566  localstack             (DynamoDB, SQS)
+#   9200  opensearch             (RAG, profile: rag)
+#   8085  amps-core admin        (profile: amps)
+#   8086  amps-portfolio admin
+#   8087  amps-cds admin
+#   8088  amps-etf admin
+#   8089  amps-risk admin
+#   9007  amps-core tcp
+#   9008  amps-portfolio tcp
+#   9009  amps-cds tcp
+#   9010  amps-etf tcp
+#   9011  amps-risk tcp
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: agentic-ai
+
+# ── Shared image (api + all agent services) ───────────────────────────────────
+x-api-image: &api-image
+  build:
+    context: ..
+    dockerfile: repo-api/Dockerfile
+  image: agentic-ai:latest
+
+# ── Common environment for all agent services ─────────────────────────────────
+x-common-env: &common-env
+  # LLM provider: ollama (default, no key needed) | anthropic | mock
+  LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+  ANTHROPIC_FAST_MODEL: ${ANTHROPIC_FAST_MODEL:-claude-haiku-4-5-20251001}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+  OLLAMA_FAST_MODEL: ${OLLAMA_FAST_MODEL:-llama3.2}
+  # Demo mode: pre-scripted financial responses (no LLM call for matched queries)
+  DEMO_MODE_ENABLED: ${DEMO_MODE_ENABLED:-false}
+  # AWS / LocalStack
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_ENDPOINT_URL: http://localstack:4566
+  AGENT_REGISTRY_TABLE: agentic-ai-staging-agent-registry
+  # Data sources
+  KDB_ENABLED: "true"
+  KDB_MODE: poc
+  KDB_DATA_PATH: /app/data/kdb
+  AMPS_ENABLED: "false"
+  PORTFOLIO_ENABLED: "true"
+  CDS_ENABLED: "true"
+  ETF_ENABLED: "true"
+  # RAG (OpenSearch) — graceful fallback if unavailable
+  OPENSEARCH_URL: http://opensearch:9200
+  OPENSEARCH_INDEX: knowledge_base
+  # Observability (disabled by default)
+  OBSERVABILITY_ENABLED: "false"
+  LANGFUSE_PUBLIC_KEY: ""
+  LANGFUSE_SECRET_KEY: ""
+  LANGFUSE_HOST: ""
+  DYNATRACE_ENDPOINT: ""
+  DYNATRACE_API_TOKEN: ""
+  # Guardrails
+  AGENT_MAX_ITERATIONS: "15"
+  GRAPH_RECURSION_LIMIT: "25"
+  AGENT_TIMEOUT_DEFAULT: "60"
+  AGENT_TIMEOUT_KDB: "90"
+  AGENT_TIMEOUT_AMPS: "30"
+  AGENT_TIMEOUT_RISK_PNL: "90"
+  RATE_LIMIT_ENABLED: "false"
+
+# ── Base for all agent containers (same image, different AGENT_SERVICE) ────────
+x-agent-base: &agent-base
+  <<: *api-image
+  entrypoint: ["/phase3_entrypoint.sh"]
+  restart: unless-stopped
+  depends_on:
+    localstack:
+      condition: service_healthy
+
+# ── AMPS server base ──────────────────────────────────────────────────────────
+x-amps-base: &amps-base
+  build:
+    context: ./docker/amps
+  image: agentic-ai-amps:latest
+  platform: linux/amd64
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "curl", "-sf", "http://localhost:8085/amps.json"]
+    interval: 10s
+    timeout: 5s
+    retries: 10
+    start_period: 15s
+
+# ── Services ──────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── LocalStack — DynamoDB + SQS emulation ─────────────────────────────────
+  localstack:
+    profiles: ["demo", "agents", "amps", "rag"]
+    image: localstack/localstack:3.4
+    container_name: localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs,dynamodb,secretsmanager,s3,logs
+      - DEBUG=0
+      - DATA_DIR=/var/lib/localstack/data
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/localstack_init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ── API Service — LangGraph + LLM Router ──────────────────────────────────
+  api-service:
+    profiles: ["demo", "agents"]
+    <<: *agent-base
+    container_name: api-service
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: api
+      SKIP_INGEST: "true"
+      KDB_AGENT_URL: http://kdb-agent:8001
+      AMPS_AGENT_URL: http://amps-agent:8002
+      PORTFOLIO_AGENT_URL: http://portfolio-agent:8004
+      CDS_AGENT_URL: http://cds-agent:8005
+      ETF_AGENT_URL: http://etf-agent:8006
+      RISK_PNL_AGENT_URL: http://risk-pnl-agent:8007
+      FINANCIAL_ORCHESTRATOR_URL: http://financial-orchestrator:8003
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ── KDB Agent — Historical Bond RFQ Analytics ─────────────────────────────
+  kdb-agent:
+    profiles: ["agents"]
+    <<: *agent-base
+    container_name: kdb-agent
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: kdb
+      AGENT_PORT: "8001"
+      KDB_AGENT_ENDPOINT: http://kdb-agent:8001
+      SKIP_INGEST: "true"
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── AMPS Agent — Real-Time Market Data ────────────────────────────────────
+  amps-agent:
+    profiles: ["agents"]
+    <<: *agent-base
+    container_name: amps-agent
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: amps
+      AGENT_PORT: "8002"
+      AMPS_AGENT_ENDPOINT: http://amps-agent:8002
+      SKIP_INGEST: "true"
+      AMPS_ENABLED: "true"
+      AMPS_HOST: host.docker.internal
+      AMPS_PORT: "9007"
+      AMPS_ADMIN_PORT: "8085"
+      AMPS_TOPIC_ROUTE_portfolio_nav: host.docker.internal:9008
+      AMPS_TOPIC_ROUTE_cds_spreads: host.docker.internal:9009
+      AMPS_TOPIC_ROUTE_etf_nav: host.docker.internal:9010
+      AMPS_TOPIC_ROUTE_risk_metrics: host.docker.internal:9011
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Portfolio Agent — Holdings & Exposure ─────────────────────────────────
+  portfolio-agent:
+    profiles: ["agents"]
+    <<: *agent-base
+    container_name: portfolio-agent
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: portfolio
+      AGENT_PORT: "8004"
+      PORTFOLIO_AGENT_ENDPOINT: http://portfolio-agent:8004
+      SKIP_INGEST: "true"
+    ports:
+      - "8004:8004"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── CDS Agent — Credit Default Swap Spreads ───────────────────────────────
+  cds-agent:
+    profiles: ["agents"]
+    <<: *agent-base
+    container_name: cds-agent
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: cds
+      AGENT_PORT: "8005"
+      CDS_AGENT_ENDPOINT: http://cds-agent:8005
+      SKIP_INGEST: "true"
+    ports:
+      - "8005:8005"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── ETF Agent — NAV, Flows & Basket Composition ───────────────────────────
+  etf-agent:
+    profiles: ["agents"]
+    <<: *agent-base
+    container_name: etf-agent
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: etf
+      AGENT_PORT: "8006"
+      ETF_AGENT_ENDPOINT: http://etf-agent:8006
+      SKIP_INGEST: "true"
+    ports:
+      - "8006:8006"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Risk & P&L Agent — VaR, DV01, CS01, P&L Attribution ──────────────────
+  risk-pnl-agent:
+    profiles: ["agents"]
+    <<: *agent-base
+    container_name: risk-pnl-agent
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: risk_pnl
+      AGENT_PORT: "8007"
+      RISK_PNL_AGENT_ENDPOINT: http://risk-pnl-agent:8007
+      PORTFOLIO_AGENT_URL: http://portfolio-agent:8004
+      KDB_AGENT_URL: http://kdb-agent:8001
+      SKIP_INGEST: "true"
+    ports:
+      - "8007:8007"
+    depends_on:
+      localstack:
+        condition: service_healthy
+      portfolio-agent:
+        condition: service_healthy
+      kdb-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Financial Orchestrator — Phase 2 legacy fallback ──────────────────────
+  financial-orchestrator:
+    profiles: ["agents"]
+    <<: *agent-base
+    container_name: financial-orchestrator
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: financial_orchestrator
+      AGENT_PORT: "8003"
+      FINANCIAL_ORCHESTRATOR_ENDPOINT: http://financial-orchestrator:8003
+      KDB_AGENT_URL: http://kdb-agent:8001
+      AMPS_AGENT_URL: http://amps-agent:8002
+      SKIP_INGEST: "true"
+    ports:
+      - "8003:8003"
+    depends_on:
+      localstack:
+        condition: service_healthy
+      kdb-agent:
+        condition: service_healthy
+      amps-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── AMPS Core — positions / orders / market-data ──────────────────────────
+  amps-core:
+    profiles: ["amps"]
+    <<: *amps-base
+    container_name: amps-core
+    volumes:
+      - amps_core_sow:/sow
+      - ./docker/amps/config.xml:/config.xml:ro
+    ports:
+      - "8085:8085"
+      - "9007:9007"
+
+  # ── AMPS Portfolio — portfolio_nav ────────────────────────────────────────
+  amps-portfolio:
+    profiles: ["amps"]
+    <<: *amps-base
+    container_name: amps-portfolio
+    volumes:
+      - amps_portfolio_sow:/sow
+      - ./docker/amps/config-portfolio.xml:/config.xml:ro
+    ports:
+      - "8086:8085"
+      - "9008:9007"
+
+  # ── AMPS CDS — cds_spreads ────────────────────────────────────────────────
+  amps-cds:
+    profiles: ["amps"]
+    <<: *amps-base
+    container_name: amps-cds
+    volumes:
+      - amps_cds_sow:/sow
+      - ./docker/amps/config-cds.xml:/config.xml:ro
+    ports:
+      - "8087:8085"
+      - "9009:9007"
+
+  # ── AMPS ETF — etf_nav ────────────────────────────────────────────────────
+  amps-etf:
+    profiles: ["amps"]
+    <<: *amps-base
+    container_name: amps-etf
+    volumes:
+      - amps_etf_sow:/sow
+      - ./docker/amps/config-etf.xml:/config.xml:ro
+    ports:
+      - "8088:8085"
+      - "9010:9007"
+
+  # ── AMPS Risk — risk_metrics ──────────────────────────────────────────────
+  amps-risk:
+    profiles: ["amps"]
+    <<: *amps-base
+    container_name: amps-risk
+    volumes:
+      - amps_risk_sow:/sow
+      - ./docker/amps/config-risk.xml:/config.xml:ro
+    ports:
+      - "8089:8085"
+      - "9011:9007"
+
+  # ── AMPS Publisher — seeds positions/orders/market-data, ticks every 2s ──
+  amps-publisher:
+    profiles: ["amps"]
+    <<: *api-image
+    container_name: amps-publisher
+    entrypoint: ["python", "scripts/amps_publisher.py"]
+    working_dir: /app
+    environment:
+      AMPS_HOST: amps-core
+      AMPS_PORT: "9007"
+      MODE: both
+      TICK_INTERVAL: "2"
+    volumes:
+      - ./scripts/amps_publisher.py:/app/scripts/amps_publisher.py:ro
+    restart: on-failure
+    depends_on:
+      amps-core:
+        condition: service_healthy
+
+  # ── Product Publisher — portfolio_nav/cds_spreads/etf_nav/risk_metrics ────
+  product-publisher:
+    profiles: ["amps"]
+    <<: *api-image
+    container_name: product-publisher
+    entrypoint: ["python", "scripts/product_publishers.py"]
+    working_dir: /app
+    environment:
+      AMPS_PORTFOLIO_HOST: amps-portfolio
+      AMPS_PORTFOLIO_PORT: "9007"
+      AMPS_CDS_HOST: amps-cds
+      AMPS_CDS_PORT: "9007"
+      AMPS_ETF_HOST: amps-etf
+      AMPS_ETF_PORT: "9007"
+      AMPS_RISK_HOST: amps-risk
+      AMPS_RISK_PORT: "9007"
+      MODE: both
+      TICK_INTERVAL: "7"
+    volumes:
+      - ./scripts/product_publishers.py:/app/scripts/product_publishers.py:ro
+    restart: on-failure
+    depends_on:
+      amps-portfolio:
+        condition: service_healthy
+      amps-cds:
+        condition: service_healthy
+      amps-etf:
+        condition: service_healthy
+      amps-risk:
+        condition: service_healthy
+
+  # ── OpenSearch — RAG vector store (optional) ──────────────────────────────
+  opensearch:
+    profiles: ["rag"]
+    image: opensearchproject/opensearch:2.13.0
+    container_name: opensearch
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_JAVA_OPTS=-Xms128m -Xmx128m
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9200/_cluster/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  localstack_data:
+  opensearch_data:
+  amps_core_sow:
+  amps_portfolio_sow:
+  amps_cds_sow:
+  amps_etf_sow:
+  amps_risk_sow:

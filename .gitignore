@@ -47,6 +47,8 @@ docker/amps/*.tar
 docker/amps/*.tar.gz
 repo-mcp-tools/docker/amps/AMPS.tar
 repo-mcp-tools/docker/amps/*.tar
+repo-local-dev/docker/amps/AMPS.tar
+repo-local-dev/docker/amps/*.tar
 repo-mcp-tools/docker/amps/*.tar.gz
 
 # ── KDB+ license & binary (proprietary, personal) ────────────────────────────
