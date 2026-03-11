@@ -457,7 +457,8 @@ services:
     environment:
       HTTPS_PROXY: ${HTTPS_PROXY:-http://proxy.jpmchase.net:10443}
       HTTP_PROXY: ${HTTP_PROXY:-http://proxy.jpmchase.net:10443}
-      NO_PROXY: localhost,127.0.0.1,localstack
+      NO_PROXY: "*"
+      OLLAMA_HOST: http://127.0.0.1:11434
     ports:
       - "11434:11434"
     volumes:
