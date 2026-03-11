@@ -51,8 +51,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY repo-mcp-tools/amps/client/ /tmp/amps-client/
 RUN if ls /tmp/amps-client/*.zip 2>/dev/null; then \
         pip install --no-cache-dir /tmp/amps-client/*.zip; \
+    elif ls /tmp/amps-client/*.tar.gz 2>/dev/null; then \
+        pip install --no-cache-dir /tmp/amps-client/*.tar.gz; \
     else \
-        echo "AMPS client zip not found — AMPS integration will be unavailable"; \
+        echo "AMPS client not found — AMPS integration will be unavailable"; \
     fi
 
 # ── Application source ────────────────────────────────────────────────────────

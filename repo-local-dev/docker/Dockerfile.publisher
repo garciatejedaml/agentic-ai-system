@@ -9,12 +9,14 @@
 
 FROM agentic-ai:latest
 
-# Install AMPS Python client (same as repo-api/Dockerfile)
+# Install AMPS Python client (.zip or .tar.gz)
 COPY repo-mcp-tools/amps/client/ /tmp/amps-client/
 RUN if ls /tmp/amps-client/*.zip 2>/dev/null; then \
         pip install --no-cache-dir /tmp/amps-client/*.zip; \
+    elif ls /tmp/amps-client/*.tar.gz 2>/dev/null; then \
+        pip install --no-cache-dir /tmp/amps-client/*.tar.gz; \
     else \
-        echo "AMPS client zip not found"; \
+        echo "AMPS client not found"; \
     fi && rm -rf /tmp/amps-client
 
 # Copy AMPS publisher scripts
