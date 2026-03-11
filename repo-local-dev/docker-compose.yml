@@ -457,13 +457,13 @@ services:
     environment:
       HTTPS_PROXY: ${HTTPS_PROXY:-http://proxy.jpmchase.net:10443}
       HTTP_PROXY: ${HTTP_PROXY:-http://proxy.jpmchase.net:10443}
-      NO_PROXY: "*"
+      NO_PROXY: "localhost,127.0.0.1"
       OLLAMA_HOST: http://127.0.0.1:11434
     ports:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
+      - ./certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
     networks:
       - default
     healthcheck:
