@@ -36,13 +36,17 @@
     </Transport>
   </Transports>
 
-  <SOW>
+  <Topics>
     <Topic>
       <Name>cds_spreads</Name>
       <MessageType>json</MessageType>
       <Key>/entity_tenor_key</Key>
-      <FileName>/sow/cds_spreads.sow</FileName>
+      <SOW>
+        <Type>HashFile</Type>
+        <Filename>/sow/cds_spreads.sow</Filename>
+        <RecordSize>256</RecordSize>
+      </SOW>
     </Topic>
-  </SOW>
+  </Topics>
 
 </AMPSConfig>

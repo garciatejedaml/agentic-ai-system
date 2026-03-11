@@ -36,13 +36,17 @@
     </Transport>
   </Transports>
 
-  <SOW>
+  <Topics>
     <Topic>
       <Name>risk_metrics</Name>
       <MessageType>json</MessageType>
       <Key>/portfolio_id</Key>
-      <FileName>/sow/risk_metrics.sow</FileName>
+      <SOW>
+        <Type>HashFile</Type>
+        <Filename>/sow/risk_metrics.sow</Filename>
+        <RecordSize>256</RecordSize>
+      </SOW>
     </Topic>
-  </SOW>
+  </Topics>
 
 </AMPSConfig>

@@ -33,27 +33,39 @@
     </Transport>
   </Transports>
 
-  <SOW>
+  <Topics>
     <Topic>
       <Name>positions</Name>
       <MessageType>json</MessageType>
       <Key>/id</Key>
-      <FileName>/sow/positions.sow</FileName>
+      <SOW>
+        <Type>HashFile</Type>
+        <Filename>/sow/positions.sow</Filename>
+        <RecordSize>256</RecordSize>
+      </SOW>
     </Topic>
 
     <Topic>
       <Name>orders</Name>
       <MessageType>json</MessageType>
       <Key>/order_id</Key>
-      <FileName>/sow/orders.sow</FileName>
+      <SOW>
+        <Type>HashFile</Type>
+        <Filename>/sow/orders.sow</Filename>
+        <RecordSize>256</RecordSize>
+      </SOW>
     </Topic>
 
     <Topic>
       <Name>market-data</Name>
       <MessageType>json</MessageType>
       <Key>/symbol</Key>
-      <FileName>/sow/market-data.sow</FileName>
+      <SOW>
+        <Type>HashFile</Type>
+        <Filename>/sow/market-data.sow</Filename>
+        <RecordSize>256</RecordSize>
+      </SOW>
     </Topic>
-  </SOW>
+  </Topics>
 
 </AMPSConfig>

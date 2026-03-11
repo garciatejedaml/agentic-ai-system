@@ -178,14 +178,14 @@ def _query_amps_etf_nav() -> list[dict] | None:
     try:
         import AMPS  # type: ignore
         client = AMPS.Client("etf-mcp-sow")
-        client.connect(f"amps://{AMPS_ETF_HOST}:{AMPS_ETF_PORT}/amps/json")
+        client.connect(f"tcp://{AMPS_ETF_HOST}:{AMPS_ETF_PORT}/amps/json")
+        client.logon()
         records = []
-        with client.sow("etf_nav") as result:
-            for msg in result:
-                if msg.command == "sow":
-                    records.append(json.loads(msg.data))
-                elif msg.command == "group_end":
-                    break
+        cmd = AMPS.Command("sow").set_topic("etf_nav")
+        for msg in client.execute(cmd):
+            data = msg.get_data()
+            if data:
+                records.append(json.loads(data))
         client.disconnect()
         return records if records else None
     except Exception as exc:
