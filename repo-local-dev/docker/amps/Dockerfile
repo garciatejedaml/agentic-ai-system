@@ -26,13 +26,24 @@ LABEL description="AMPS Server – POC development instance"
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy AMPS binaries and config
+# Copy AMPS binaries
 COPY --from=builder /AMPS /AMPS
-COPY config.xml /config.xml
+
+# Copy all configs into /configs/ — avoids bind-mounting individual files on Windows
+RUN mkdir -p /configs
+COPY config.xml          /configs/config-core.xml
+COPY config-portfolio.xml /configs/config-portfolio.xml
+COPY config-cds.xml      /configs/config-cds.xml
+COPY config-etf.xml      /configs/config-etf.xml
+COPY config-risk.xml     /configs/config-risk.xml
+
+# Copy entrypoint that selects config via AMPS_CONFIG env var
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Create SOW data directory
 RUN mkdir -p /sow
 
 EXPOSE 8085 9007
 
-CMD ["/AMPS/bin/ampServer", "/config.xml"]
+ENTRYPOINT ["/entrypoint.sh"]

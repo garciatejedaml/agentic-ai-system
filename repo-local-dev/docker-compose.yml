@@ -341,9 +341,10 @@ services:
     profiles: ["amps"]
     <<: *amps-base
     container_name: amps-core
+    environment:
+      AMPS_CONFIG: core
     volumes:
       - amps_core_sow:/sow
-      - ./docker/amps/config.xml:/config.xml:ro
     ports:
       - "8085:8085"
       - "9007:9007"
@@ -353,9 +354,10 @@ services:
     profiles: ["amps"]
     <<: *amps-base
     container_name: amps-portfolio
+    environment:
+      AMPS_CONFIG: portfolio
     volumes:
       - amps_portfolio_sow:/sow
-      - ./docker/amps/config-portfolio.xml:/config.xml:ro
     ports:
       - "8086:8085"
       - "9008:9007"
@@ -365,9 +367,10 @@ services:
     profiles: ["amps"]
     <<: *amps-base
     container_name: amps-cds
+    environment:
+      AMPS_CONFIG: cds
     volumes:
       - amps_cds_sow:/sow
-      - ./docker/amps/config-cds.xml:/config.xml:ro
     ports:
       - "8087:8085"
       - "9009:9007"
@@ -377,9 +380,10 @@ services:
     profiles: ["amps"]
     <<: *amps-base
     container_name: amps-etf
+    environment:
+      AMPS_CONFIG: etf
     volumes:
       - amps_etf_sow:/sow
-      - ./docker/amps/config-etf.xml:/config.xml:ro
     ports:
       - "8098:8085"
       - "9010:9007"
@@ -389,9 +393,10 @@ services:
     profiles: ["amps"]
     <<: *amps-base
     container_name: amps-risk
+    environment:
+      AMPS_CONFIG: risk
     volumes:
       - amps_risk_sow:/sow
-      - ./docker/amps/config-risk.xml:/config.xml:ro
     ports:
       - "8089:8085"
       - "9011:9007"
