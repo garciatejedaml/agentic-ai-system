@@ -21,6 +21,7 @@ Schema:
 import asyncio
 import json
 import logging
+import os
 import sys
 from typing import Any
 
@@ -29,6 +30,9 @@ import mcp.types as types
 from mcp.server import Server
 
 logger = logging.getLogger(__name__)
+
+AMPS_ETF_HOST = os.getenv("AMPS_ETF_HOST", "amps-etf")
+AMPS_ETF_PORT = int(os.getenv("AMPS_ETF_PORT", "9007"))
 
 # ── POC Data Generation ─────────────────────────────────────────────────────
 
@@ -165,7 +169,35 @@ def _build_poc_data():
     return etf_summaries, etf_holdings_map
 
 
-_ETF_SUMMARIES, _ETF_HOLDINGS = _build_poc_data()
+_ETF_POC_SUMMARIES, _ETF_HOLDINGS = _build_poc_data()
+
+# ── AMPS live data ───────────────────────────────────────────────────────────
+
+def _query_amps_etf_nav() -> list[dict] | None:
+    """Query AMPS etf_nav SOW. Returns list of ETF records or None."""
+    try:
+        import AMPS  # type: ignore
+        client = AMPS.Client("etf-mcp-sow")
+        client.connect(f"amps://{AMPS_ETF_HOST}:{AMPS_ETF_PORT}/amps/json")
+        records = []
+        with client.sow("etf_nav") as result:
+            for msg in result:
+                if msg.command == "sow":
+                    records.append(json.loads(msg.data))
+                elif msg.command == "group_end":
+                    break
+        client.disconnect()
+        return records if records else None
+    except Exception as exc:
+        logger.debug("[AMPS] etf_nav query failed: %s — using POC data", exc)
+        return None
+
+
+def _get_etf_summaries() -> list[dict]:
+    """Return live AMPS ETF summaries if available, else POC."""
+    live = _query_amps_etf_nav()
+    return live if live is not None else _ETF_POC_SUMMARIES
+
 
 # Simulate weekly flow history (last 12 weeks)
 def _build_flow_history(ticker: str, ytd_flow: float) -> list[dict]:
@@ -193,14 +225,16 @@ def _fmt(data: Any) -> str:
 
 
 def _etf_list() -> str:
-    return _fmt({"etfs": _ETF_SUMMARIES, "total": len(_ETF_SUMMARIES)})
+    summaries = _get_etf_summaries()
+    return _fmt({"etfs": summaries, "total": len(summaries)})
 
 
 def _etf_details(ticker: str) -> str:
     ticker = ticker.upper()
-    match = next((e for e in _ETF_SUMMARIES if e["ticker"] == ticker), None)
+    summaries = _get_etf_summaries()
+    match = next((e for e in summaries if e["ticker"] == ticker), None)
     if not match:
-        known = [e["ticker"] for e in _ETF_SUMMARIES]
+        known = [e["ticker"] for e in summaries]
         return _fmt({"error": f"ETF '{ticker}' not found", "known_tickers": known})
     holdings = _ETF_HOLDINGS.get(ticker, [])
     return _fmt({**match, "top_10_holdings": holdings[:10]})
@@ -208,11 +242,13 @@ def _etf_details(ticker: str) -> str:
 
 def _etf_flows(ticker: str, period: str = "12w") -> str:
     ticker = ticker.upper()
-    match = next((e for e in _ETF_SUMMARIES if e["ticker"] == ticker), None)
+    summaries = _get_etf_summaries()
+    match = next((e for e in summaries if e["ticker"] == ticker), None)
     if not match:
-        known = [e["ticker"] for e in _ETF_SUMMARIES]
+        known = [e["ticker"] for e in summaries]
         return _fmt({"error": f"ETF '{ticker}' not found", "known_tickers": known})
-    history = _build_flow_history(ticker, match["ytd_flow_usd"])
+    flow_base = match.get("ytd_flow_usd", match.get("intraday_flow_usd", 0))
+    history = _build_flow_history(ticker, flow_base)
     total_creation = sum(r["creation_usd"] for r in history)
     total_redemption = sum(r["redemption_usd"] for r in history)
     return _fmt({

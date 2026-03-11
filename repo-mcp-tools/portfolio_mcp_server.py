@@ -3,7 +3,8 @@
 Portfolio MCP Server — Phase 3
 
 Exposes portfolio holdings and exposure analytics as MCP tools.
-POC data is generated in-memory at startup (no external DB needed).
+Live data is sourced from AMPS (portfolio_nav topic) when available;
+falls back to in-memory POC data.
 
 Tools:
   - portfolio_list            → all portfolios with summary stats
@@ -19,8 +20,12 @@ Schema (portfolio_positions):
 import asyncio
 import json
 import logging
+import os
 import sys
 from typing import Any
+
+AMPS_PORTFOLIO_HOST = os.getenv("AMPS_PORTFOLIO_HOST", "amps-portfolio")
+AMPS_PORTFOLIO_PORT = int(os.getenv("AMPS_PORTFOLIO_PORT", "9007"))
 
 import mcp.server.stdio
 import mcp.types as types
@@ -130,6 +135,28 @@ def _build_poc_data():
 _POSITIONS = _build_poc_data()
 
 
+# ── AMPS live data ───────────────────────────────────────────────────────────
+
+def _query_amps_portfolio_nav() -> list[dict] | None:
+    """Query AMPS portfolio_nav SOW. Returns list of portfolio records or None."""
+    try:
+        import AMPS  # type: ignore
+        client = AMPS.Client("portfolio-mcp-sow")
+        client.connect(f"amps://{AMPS_PORTFOLIO_HOST}:{AMPS_PORTFOLIO_PORT}/amps/json")
+        records = []
+        with client.sow("portfolio_nav") as result:
+            for msg in result:
+                if msg.command == "sow":
+                    records.append(json.loads(msg.data))
+                elif msg.command == "group_end":
+                    break
+        client.disconnect()
+        return records if records else None
+    except Exception as exc:
+        logger.debug("[AMPS] portfolio_nav query failed: %s — using POC data", exc)
+        return None
+
+
 # ── Tool helpers ────────────────────────────────────────────────────────────
 
 def _fmt(data: Any) -> str:
@@ -137,6 +164,26 @@ def _fmt(data: Any) -> str:
 
 
 def _portfolio_list() -> str:
+    # Try live AMPS data first
+    amps_records = _query_amps_portfolio_nav()
+    if amps_records:
+        result = []
+        for r in amps_records:
+            result.append({
+                "portfolio_id":           r.get("portfolio_id", ""),
+                "portfolio_name":         r.get("portfolio_name", ""),
+                "desk":                   r.get("desk", ""),
+                "total_nav_usd":          r.get("total_nav_usd", 0.0),
+                "daily_pnl_usd":          r.get("daily_pnl_usd", 0.0),
+                "daily_pnl_pct":          r.get("daily_pnl_pct", 0.0),
+                "ytd_return_pct":         r.get("ytd_return_pct", 0.0),
+                "avg_spread_bps":         r.get("avg_spread_bps", 0.0),
+                "avg_duration_years":     r.get("avg_duration_years", 0.0),
+                "data_source":            "amps_live",
+            })
+        return _fmt({"portfolios": result, "total_portfolios": len(result)})
+
+    # Fallback: derive summary from POC position data
     portfolios: dict = {}
     for row in _POSITIONS:
         pid = row["portfolio_id"]

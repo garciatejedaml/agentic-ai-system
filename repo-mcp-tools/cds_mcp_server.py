@@ -18,6 +18,7 @@ Schema (cds_market_data):
 import asyncio
 import json
 import logging
+import os
 import sys
 from typing import Any
 
@@ -26,6 +27,9 @@ import mcp.types as types
 from mcp.server import Server
 
 logger = logging.getLogger(__name__)
+
+AMPS_CDS_HOST = os.getenv("AMPS_CDS_HOST", "amps-cds")
+AMPS_CDS_PORT = int(os.getenv("AMPS_CDS_PORT", "9007"))
 
 # ── POC Data Generation ─────────────────────────────────────────────────────
 
@@ -114,7 +118,35 @@ def _build_poc_data():
     return rows
 
 
-_CDS_DATA = _build_poc_data()
+_CDS_POC_DATA = _build_poc_data()
+
+
+# ── AMPS live data ───────────────────────────────────────────────────────────
+
+def _query_amps_cds_spreads() -> list[dict] | None:
+    """Query AMPS cds_spreads SOW. Returns all entity-tenor rows or None."""
+    try:
+        import AMPS  # type: ignore
+        client = AMPS.Client("cds-mcp-sow")
+        client.connect(f"amps://{AMPS_CDS_HOST}:{AMPS_CDS_PORT}/amps/json")
+        records = []
+        with client.sow("cds_spreads") as result:
+            for msg in result:
+                if msg.command == "sow":
+                    records.append(json.loads(msg.data))
+                elif msg.command == "group_end":
+                    break
+        client.disconnect()
+        return records if records else None
+    except Exception as exc:
+        logger.debug("[AMPS] cds_spreads query failed: %s — using POC data", exc)
+        return None
+
+
+def _get_cds_data() -> list[dict]:
+    """Return live AMPS data if available, else POC."""
+    live = _query_amps_cds_spreads()
+    return live if live is not None else _CDS_POC_DATA
 
 
 # ── Tool helpers ────────────────────────────────────────────────────────────
@@ -125,7 +157,7 @@ def _fmt(data: Any) -> str:
 
 def _cds_list_entities() -> str:
     seen = {}
-    for row in _CDS_DATA:
+    for row in _get_cds_data():
         e = row["reference_entity"]
         if e not in seen:
             seen[e] = {
@@ -149,13 +181,14 @@ def _cds_list_entities() -> str:
 
 
 def _cds_get_spread(reference_entity: str, tenor_years: int) -> str:
+    data = _get_cds_data()
     matches = [
-        r for r in _CDS_DATA
+        r for r in data
         if r["reference_entity"].lower() == reference_entity.lower()
         and r["tenor_years"] == tenor_years
     ]
     if not matches:
-        known = sorted({r["reference_entity"] for r in _CDS_DATA})
+        known = sorted({r["reference_entity"] for r in data})
         return _fmt({
             "error": f"No data for '{reference_entity}' at {tenor_years}y tenor",
             "known_entities": known[:20],
@@ -165,12 +198,13 @@ def _cds_get_spread(reference_entity: str, tenor_years: int) -> str:
 
 
 def _cds_curve(reference_entity: str) -> str:
+    data = _get_cds_data()
     matches = [
-        r for r in _CDS_DATA
+        r for r in data
         if r["reference_entity"].lower() == reference_entity.lower()
     ]
     if not matches:
-        known = sorted({r["reference_entity"] for r in _CDS_DATA})
+        known = sorted({r["reference_entity"] for r in data})
         return _fmt({
             "error": f"No data for '{reference_entity}'",
             "known_entities": known[:20],
@@ -191,7 +225,7 @@ def _cds_screener(
     rating: str = "",
 ) -> str:
     # Filter on 5y tenor only for screener
-    rows = [r for r in _CDS_DATA if r["tenor_years"] == 5]
+    rows = [r for r in _get_cds_data() if r["tenor_years"] == 5]
     rows = [r for r in rows if min_spread <= r["spread_bps"] <= max_spread]
     if sector:
         rows = [r for r in rows if sector.lower() in r["sector"].lower()]

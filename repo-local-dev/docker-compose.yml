@@ -229,6 +229,8 @@ services:
       AGENT_PORT: "8004"
       PORTFOLIO_AGENT_ENDPOINT: http://portfolio-agent:8004
       SKIP_INGEST: "true"
+      AMPS_PORTFOLIO_HOST: amps-portfolio
+      AMPS_PORTFOLIO_PORT: "9007"
     ports:
       - "8004:8004"
     healthcheck:
@@ -249,6 +251,8 @@ services:
       AGENT_PORT: "8005"
       CDS_AGENT_ENDPOINT: http://cds-agent:8005
       SKIP_INGEST: "true"
+      AMPS_CDS_HOST: amps-cds
+      AMPS_CDS_PORT: "9007"
     ports:
       - "8005:8005"
     healthcheck:
@@ -269,6 +273,8 @@ services:
       AGENT_PORT: "8006"
       ETF_AGENT_ENDPOINT: http://etf-agent:8006
       SKIP_INGEST: "true"
+      AMPS_ETF_HOST: amps-etf
+      AMPS_ETF_PORT: "9007"
     ports:
       - "8006:8006"
     healthcheck:
@@ -291,6 +297,8 @@ services:
       PORTFOLIO_AGENT_URL: http://portfolio-agent:8004
       KDB_AGENT_URL: http://kdb-agent:8001
       SKIP_INGEST: "true"
+      AMPS_RISK_HOST: amps-risk
+      AMPS_RISK_PORT: "9007"
     ports:
       - "8007:8007"
     depends_on:

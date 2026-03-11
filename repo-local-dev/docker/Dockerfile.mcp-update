@@ -1,0 +1,15 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# MCP Update image — layers updated MCP servers on top of existing agentic-ai:latest
+# Use this on VDI to avoid a full rebuild when only MCP server code changed.
+#
+# Build (from monorepo root):
+#   docker build -f repo-local-dev/docker/Dockerfile.mcp-update \
+#                -t agentic-ai:latest .
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM agentic-ai:latest
+
+# Overwrite updated MCP servers (adds AMPS integration to portfolio/cds/etf)
+COPY repo-mcp-tools/portfolio_mcp_server.py /app/src/mcp_server/portfolio_mcp_server.py
+COPY repo-mcp-tools/cds_mcp_server.py       /app/src/mcp_server/cds_mcp_server.py
+COPY repo-mcp-tools/etf_mcp_server.py       /app/src/mcp_server/etf_mcp_server.py
