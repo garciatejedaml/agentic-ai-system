@@ -25,6 +25,7 @@
 
   <Admin>
     <InetAddr>0.0.0.0:8085</InetAddr>
+    <SQLTransport>websocket-any</SQLTransport>
   </Admin>
 
   <Transports>
@@ -33,6 +34,12 @@
       <Type>tcp</Type>
       <InetAddr>0.0.0.0:9007</InetAddr>
       <MessageType>json</MessageType>
+    </Transport>
+    <Transport>
+      <Name>websocket-any</Name>
+      <Protocol>websocket</Protocol>
+      <Type>tcp</Type>
+      <InetAddr>9008</InetAddr>
     </Transport>
   </Transports>
 
