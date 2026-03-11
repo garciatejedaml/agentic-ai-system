@@ -40,7 +40,7 @@
       <Name>etf_nav</Name>
       <MessageType>json</MessageType>
       <Key>/ticker</Key>
-      <FileName>sow/etf_nav.sow</FileName>
+      <FileName>/sow/etf_nav.sow</FileName>
     </Topic>
   </SOW>
 

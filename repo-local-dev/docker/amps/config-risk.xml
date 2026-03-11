@@ -41,7 +41,7 @@
       <Name>risk_metrics</Name>
       <MessageType>json</MessageType>
       <Key>/portfolio_id</Key>
-      <FileName>sow/risk_metrics.sow</FileName>
+      <FileName>/sow/risk_metrics.sow</FileName>
     </Topic>
   </SOW>
 

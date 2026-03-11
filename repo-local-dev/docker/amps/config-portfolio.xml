@@ -38,7 +38,7 @@
       <Name>portfolio_nav</Name>
       <MessageType>json</MessageType>
       <Key>/portfolio_id</Key>
-      <FileName>sow/portfolio_nav.sow</FileName>
+      <FileName>/sow/portfolio_nav.sow</FileName>
     </Topic>
   </SOW>
 

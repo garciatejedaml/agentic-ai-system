@@ -38,21 +38,21 @@
       <Name>positions</Name>
       <MessageType>json</MessageType>
       <Key>/id</Key>
-      <FileName>sow/positions.sow</FileName>
+      <FileName>/sow/positions.sow</FileName>
     </Topic>
 
     <Topic>
       <Name>orders</Name>
       <MessageType>json</MessageType>
       <Key>/order_id</Key>
-      <FileName>sow/orders.sow</FileName>
+      <FileName>/sow/orders.sow</FileName>
     </Topic>
 
     <Topic>
       <Name>market-data</Name>
       <MessageType>json</MessageType>
       <Key>/symbol</Key>
-      <FileName>sow/market-data.sow</FileName>
+      <FileName>/sow/market-data.sow</FileName>
     </Topic>
   </SOW>
 

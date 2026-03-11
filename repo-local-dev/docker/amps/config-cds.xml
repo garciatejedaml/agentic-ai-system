@@ -41,7 +41,7 @@
       <Name>cds_spreads</Name>
       <MessageType>json</MessageType>
       <Key>/entity_tenor_key</Key>
-      <FileName>sow/cds_spreads.sow</FileName>
+      <FileName>/sow/cds_spreads.sow</FileName>
     </Topic>
   </SOW>
 
