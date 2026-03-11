@@ -74,7 +74,7 @@ x-api-image: &api-image
 # ── Common environment for all agent services ─────────────────────────────────
 x-common-env: &common-env
   LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
-  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
   OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   DEMO_MODE_ENABLED: ${DEMO_MODE_ENABLED:-false}
@@ -448,6 +448,25 @@ services:
       amps-risk:
         condition: service_healthy
 
+  # ── Ollama — Local LLM (llama3.2:3b, no API key needed) ──────────────────
+  ollama:
+    profiles: ["agents", "demo"]
+    image: ollama:0.9.6
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
   # ── OpenSearch — RAG vector store (optional) ──────────────────────────────
   opensearch:
     profiles: ["rag"]
@@ -471,6 +490,7 @@ services:
 volumes:
   localstack_data:
   opensearch_data:
+  ollama_data:
   amps_core_sow:
   amps_portfolio_sow:
   amps_cds_sow:
