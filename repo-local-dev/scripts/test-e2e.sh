@@ -13,8 +13,7 @@ ask() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     curl -s -X POST "$API" \
         -H "Content-Type: application/json" \
-        -d "{\"model\":\"x\",\"messages\":[{\"role\":\"user\",\"content\":\"$2\"}]}" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'])"
+        -d "{\"model\":\"x\",\"messages\":[{\"role\":\"user\",\"content\":\"$2\"}]}"
 }
 
 # Health check
