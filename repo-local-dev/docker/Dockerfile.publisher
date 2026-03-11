@@ -2,16 +2,24 @@
 # AMPS Publisher image — separate from agentic-ai:latest so the entrypoint
 # can be set to python without affecting agent containers.
 #
+# Build context: monorepo root (..)
 # Build (from repo-local-dev/):
-#   docker build -f docker/Dockerfile.publisher -t agentic-ai-publisher:latest .
+#   docker compose --profile amps build amps-publisher
 # ─────────────────────────────────────────────────────────────────────────────
 
 FROM agentic-ai:latest
 
-# Copy AMPS publisher scripts into /app/scripts/
-# Avoids bind-mounting individual files, which fails on Windows VDI.
-COPY scripts/amps_publisher.py /app/scripts/amps_publisher.py
-COPY scripts/product_publishers.py /app/scripts/product_publishers.py
+# Install AMPS Python client (same as repo-api/Dockerfile)
+COPY repo-mcp-tools/amps/client/ /tmp/amps-client/
+RUN if ls /tmp/amps-client/*.zip 2>/dev/null; then \
+        pip install --no-cache-dir /tmp/amps-client/*.zip; \
+    else \
+        echo "AMPS client zip not found"; \
+    fi && rm -rf /tmp/amps-client
+
+# Copy AMPS publisher scripts
+COPY repo-local-dev/scripts/amps_publisher.py /app/scripts/amps_publisher.py
+COPY repo-local-dev/scripts/product_publishers.py /app/scripts/product_publishers.py
 
 # Override entrypoint — publishers run python directly, not entrypoint.sh
 ENTRYPOINT ["python"]

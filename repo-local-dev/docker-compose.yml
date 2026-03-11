@@ -405,8 +405,8 @@ services:
   amps-publisher:
     profiles: ["amps"]
     build:
-      context: .
-      dockerfile: docker/Dockerfile.publisher
+      context: ..
+      dockerfile: repo-local-dev/docker/Dockerfile.publisher
     image: agentic-ai-publisher:latest
     container_name: amps-publisher
     command: ["scripts/amps_publisher.py"]
