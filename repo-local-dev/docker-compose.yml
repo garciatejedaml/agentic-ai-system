@@ -383,7 +383,7 @@ services:
       - amps_etf_sow:/sow
       - ./docker/amps/config-etf.xml:/config.xml:ro
     ports:
-      - "8088:8085"
+      - "8098:8085"
       - "9010:9007"
 
   # ── AMPS Risk — risk_metrics ──────────────────────────────────────────────
