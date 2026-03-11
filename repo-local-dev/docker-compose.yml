@@ -410,7 +410,6 @@ services:
     image: agentic-ai-publisher:latest
     container_name: amps-publisher
     command: ["scripts/amps_publisher.py"]
-    working_dir: /app
     environment:
       AMPS_HOST: amps-core
       AMPS_PORT: "9007"
@@ -425,7 +424,6 @@ services:
     image: agentic-ai-publisher:latest
     container_name: product-publisher
     command: ["scripts/product_publishers.py"]
-    working_dir: /app
     environment:
       AMPS_PORTFOLIO_HOST: amps-portfolio
       AMPS_PORTFOLIO_PORT: "9007"
