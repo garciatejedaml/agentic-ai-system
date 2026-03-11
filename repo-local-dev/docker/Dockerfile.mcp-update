@@ -9,6 +9,16 @@
 
 FROM agentic-ai:latest
 
+# Install AMPS Python client (required for live AMPS SOW queries)
+COPY repo-mcp-tools/amps/client/ /tmp/amps-client/
+RUN if ls /tmp/amps-client/*.zip 2>/dev/null; then \
+        pip install --no-cache-dir /tmp/amps-client/*.zip; \
+    elif ls /tmp/amps-client/*.tar.gz 2>/dev/null; then \
+        pip install --no-cache-dir /tmp/amps-client/*.tar.gz; \
+    else \
+        echo "AMPS client not found — MCP servers will use POC fallback"; \
+    fi && rm -rf /tmp/amps-client
+
 # Overwrite updated MCP servers (adds AMPS integration to portfolio/cds/etf)
 COPY repo-mcp-tools/portfolio_mcp_server.py /app/src/mcp_server/portfolio_mcp_server.py
 COPY repo-mcp-tools/cds_mcp_server.py       /app/src/mcp_server/cds_mcp_server.py
