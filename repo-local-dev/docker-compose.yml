@@ -416,10 +416,8 @@ services:
       AMPS_PORT: "9007"
       MODE: both
       TICK_INTERVAL: "2"
+    # restart: on-failure retries until AMPS is ready (no depends_on to avoid OCI issues on Windows)
     restart: on-failure
-    depends_on:
-      amps-core:
-        condition: service_healthy
 
   # ── Product Publisher — portfolio_nav/cds_spreads/etf_nav/risk_metrics ────
   product-publisher:
@@ -440,15 +438,6 @@ services:
       MODE: both
       TICK_INTERVAL: "7"
     restart: on-failure
-    depends_on:
-      amps-portfolio:
-        condition: service_healthy
-      amps-cds:
-        condition: service_healthy
-      amps-etf:
-        condition: service_healthy
-      amps-risk:
-        condition: service_healthy
 
   # ── Ollama — Local LLM (llama3.2:3b, no API key needed) ──────────────────
   ollama:
