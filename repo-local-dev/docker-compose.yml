@@ -60,6 +60,11 @@
 #   9009  amps-cds tcp
 #   9010  amps-etf tcp
 #   9011  amps-risk tcp
+#   9012  amps-core websocket (Galvanometer SQL)
+#   9013  amps-portfolio websocket (Galvanometer SQL)
+#   9014  amps-cds websocket (Galvanometer SQL)
+#   9015  amps-etf websocket (Galvanometer SQL)
+#   9016  amps-risk websocket (Galvanometer SQL)
 # ──────────────────────────────────────────────────────────────────────────────
 
 name: agentic-ai
@@ -356,6 +361,7 @@ services:
     ports:
       - "8085:8085"
       - "9007:9007"
+      - "9012:9008"
 
   # ── AMPS Portfolio — portfolio_nav ────────────────────────────────────────
   amps-portfolio:
@@ -369,6 +375,7 @@ services:
     ports:
       - "8086:8085"
       - "9008:9007"
+      - "9013:9008"
 
   # ── AMPS CDS — cds_spreads ────────────────────────────────────────────────
   amps-cds:
@@ -382,6 +389,7 @@ services:
     ports:
       - "8087:8085"
       - "9009:9007"
+      - "9014:9008"
 
   # ── AMPS ETF — etf_nav ────────────────────────────────────────────────────
   amps-etf:
@@ -395,6 +403,7 @@ services:
     ports:
       - "8098:8085"
       - "9010:9007"
+      - "9015:9008"
 
   # ── AMPS Risk — risk_metrics ──────────────────────────────────────────────
   amps-risk:
@@ -408,6 +417,7 @@ services:
     ports:
       - "8089:8085"
       - "9011:9007"
+      - "9016:9008"
 
   # ── AMPS Publisher — seeds positions/orders/market-data, ticks every 2s ──
   amps-publisher:
