@@ -1,9 +1,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# API image update — layers publisher scripts on top of existing agentic-ai:latest.
-# Use this on Windows VDI where rebuilding from scratch is not possible.
+# AMPS Publisher image — separate from agentic-ai:latest so the entrypoint
+# can be set to python without affecting agent containers.
 #
 # Build (from repo-local-dev/):
-#   docker build -f docker/Dockerfile.update-api -t agentic-ai:latest .
+#   docker build -f docker/Dockerfile.publisher -t agentic-ai-publisher:latest .
 # ─────────────────────────────────────────────────────────────────────────────
 
 FROM agentic-ai:latest
@@ -12,3 +12,6 @@ FROM agentic-ai:latest
 # Avoids bind-mounting individual files, which fails on Windows VDI.
 COPY scripts/amps_publisher.py /app/scripts/amps_publisher.py
 COPY scripts/product_publishers.py /app/scripts/product_publishers.py
+
+# Override entrypoint — publishers run python directly, not entrypoint.sh
+ENTRYPOINT ["python"]

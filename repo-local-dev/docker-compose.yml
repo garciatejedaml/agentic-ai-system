@@ -404,16 +404,18 @@ services:
   # ── AMPS Publisher — seeds positions/orders/market-data, ticks every 2s ──
   amps-publisher:
     profiles: ["amps"]
-    <<: *api-image
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.publisher
+    image: agentic-ai-publisher:latest
     container_name: amps-publisher
-    entrypoint: ["python", "scripts/amps_publisher.py"]
+    command: ["scripts/amps_publisher.py"]
     working_dir: /app
     environment:
       AMPS_HOST: amps-core
       AMPS_PORT: "9007"
       MODE: both
       TICK_INTERVAL: "2"
-    # Scripts are baked into the image (no bind mount — fails on Windows VDI)
     restart: on-failure
     depends_on:
       amps-core:
@@ -422,9 +424,9 @@ services:
   # ── Product Publisher — portfolio_nav/cds_spreads/etf_nav/risk_metrics ────
   product-publisher:
     profiles: ["amps"]
-    <<: *api-image
+    image: agentic-ai-publisher:latest
     container_name: product-publisher
-    entrypoint: ["python", "scripts/product_publishers.py"]
+    command: ["scripts/product_publishers.py"]
     working_dir: /app
     environment:
       AMPS_PORTFOLIO_HOST: amps-portfolio
@@ -437,7 +439,6 @@ services:
       AMPS_RISK_PORT: "9007"
       MODE: both
       TICK_INTERVAL: "7"
-    # Scripts are baked into the image (no bind mount — fails on Windows VDI)
     restart: on-failure
     depends_on:
       amps-portfolio:
