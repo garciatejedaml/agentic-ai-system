@@ -9,6 +9,17 @@
 #
 # Build & run:
 #   docker compose --profile amps build
+#
+# ── Windows VDI note ─────────────────────────────────────────────────────────
+# Two-stage build: stage 1 uses ubuntu:22.04 (needs internet, run once).
+# If Docker Hub is blocked, build stage 1 manually first:
+#
+#   docker build --target builder -t amps-builder repo-local-dev/docker/amps/
+#
+# Then on subsequent builds the layer cache is used.
+#
+# Alternatively, if agentic-ai-amps:latest already exists locally, use the
+# Dockerfile.update variant to layer only the new configs on top.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Stage 1: extract AMPS from tarball
@@ -31,11 +42,11 @@ COPY --from=builder /AMPS /AMPS
 
 # Copy all configs into /configs/ — avoids bind-mounting individual files on Windows
 RUN mkdir -p /configs
-COPY config.xml          /configs/config-core.xml
+COPY config.xml           /configs/config-core.xml
 COPY config-portfolio.xml /configs/config-portfolio.xml
-COPY config-cds.xml      /configs/config-cds.xml
-COPY config-etf.xml      /configs/config-etf.xml
-COPY config-risk.xml     /configs/config-risk.xml
+COPY config-cds.xml       /configs/config-cds.xml
+COPY config-etf.xml       /configs/config-etf.xml
+COPY config-risk.xml      /configs/config-risk.xml
 
 # Copy entrypoint that selects config via AMPS_CONFIG env var
 COPY entrypoint.sh /entrypoint.sh

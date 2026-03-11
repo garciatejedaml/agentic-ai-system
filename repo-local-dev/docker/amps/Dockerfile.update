@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AMPS Update — layers new configs + entrypoint on top of existing local image.
+# Use this when Docker Hub is blocked and agentic-ai-amps:latest already exists.
+#
+# Build:
+#   cd repo-local-dev
+#   docker build -f docker/amps/Dockerfile.update -t agentic-ai-amps:latest docker/amps/
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM agentic-ai-amps:latest
+
+# Copy all configs into /configs/
+RUN mkdir -p /configs
+COPY config.xml           /configs/config-core.xml
+COPY config-portfolio.xml /configs/config-portfolio.xml
+COPY config-cds.xml       /configs/config-cds.xml
+COPY config-etf.xml       /configs/config-etf.xml
+COPY config-risk.xml      /configs/config-risk.xml
+
+# Install entrypoint
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
