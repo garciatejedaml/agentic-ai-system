@@ -33,17 +33,13 @@
     </Transport>
   </Transports>
 
-  <Topics>
+  <SOW>
     <Topic>
       <Name>portfolio_nav</Name>
       <MessageType>json</MessageType>
       <Key>/portfolio_id</Key>
-      <SOW>
-        <Type>HashFile</Type>
-        <Filename>/sow/portfolio_nav.sow</Filename>
-        <RecordSize>256</RecordSize>
-      </SOW>
+      <FileName>/sow/portfolio_nav.sow</FileName>
     </Topic>
-  </Topics>
+  </SOW>
 
 </AMPSConfig>

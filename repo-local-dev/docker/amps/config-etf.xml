@@ -35,17 +35,13 @@
     </Transport>
   </Transports>
 
-  <Topics>
+  <SOW>
     <Topic>
       <Name>etf_nav</Name>
       <MessageType>json</MessageType>
       <Key>/ticker</Key>
-      <SOW>
-        <Type>HashFile</Type>
-        <Filename>/sow/etf_nav.sow</Filename>
-        <RecordSize>256</RecordSize>
-      </SOW>
+      <FileName>/sow/etf_nav.sow</FileName>
     </Topic>
-  </Topics>
+  </SOW>
 
 </AMPSConfig>
