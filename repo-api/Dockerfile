@@ -63,6 +63,9 @@ COPY repo-mcp-tools/ ./src/mcp_server/
 # Ingestion scripts and training data from repo-rag-ingest
 COPY repo-rag-ingest/scripts/ ./scripts/
 COPY repo-rag-ingest/data/ ./data/
+# AMPS publisher scripts (avoids bind-mount in docker-compose — fails on Windows VDI)
+COPY repo-local-dev/scripts/amps_publisher.py ./scripts/amps_publisher.py
+COPY repo-local-dev/scripts/product_publishers.py ./scripts/product_publishers.py
 COPY repo-api/main.py .
 
 # ── Runtime configuration ──────────────────────────────────────────────────────

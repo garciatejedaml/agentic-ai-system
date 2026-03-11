@@ -413,8 +413,7 @@ services:
       AMPS_PORT: "9007"
       MODE: both
       TICK_INTERVAL: "2"
-    volumes:
-      - ./scripts/amps_publisher.py:/app/scripts/amps_publisher.py:ro
+    # Scripts are baked into the image (no bind mount — fails on Windows VDI)
     restart: on-failure
     depends_on:
       amps-core:
@@ -438,8 +437,7 @@ services:
       AMPS_RISK_PORT: "9007"
       MODE: both
       TICK_INTERVAL: "7"
-    volumes:
-      - ./scripts/product_publishers.py:/app/scripts/product_publishers.py:ro
+    # Scripts are baked into the image (no bind mount — fails on Windows VDI)
     restart: on-failure
     depends_on:
       amps-portfolio:
