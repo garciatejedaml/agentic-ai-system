@@ -36,7 +36,7 @@
       <Name>websocket-any</Name>
       <Protocol>websocket</Protocol>
       <Type>tcp</Type>
-      <InetAddr>9008</InetAddr>
+      <InetAddr>localhost:9013</InetAddr>
     </Transport>
   </Transports>
 
