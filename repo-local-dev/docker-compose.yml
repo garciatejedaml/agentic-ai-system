@@ -2,6 +2,11 @@
 #
 # PROFILES — pick one or combine:
 #
+#   solo    → API + one generic-agent + LocalStack. Minimal footprint for MacBook dev.
+#             All 7 agent IDs in DynamoDB point to a single generic-agent container.
+#             Full pipeline tested: LLM Router → DynamoDB → A2A → confidence scoring.
+#             Set ANTHROPIC_API_KEY in .env or use LLM_PROVIDER=ollama.
+#
 #   demo    → API + LocalStack only. No LLM key needed.
 #             Set DEMO_MODE_ENABLED=true in .env for pre-scripted responses.
 #             Set LLM_PROVIDER=ollama to use local LLaMA.
@@ -24,6 +29,9 @@
 #   # 2. Build AMPS image (only if you have the AMPS.tar binary):
 #   docker compose --profile amps build
 #
+#   # Solo mode (1 generic agent, minimal resources — ideal for MacBook):
+#   docker compose --profile solo up -d
+#
 #   # Demo mode (no API key):
 #   docker compose --profile demo up -d
 #
@@ -37,7 +45,7 @@
 #   docker compose --profile agents --profile rag up -d
 #
 #   # Stop everything:
-#   docker compose --profile demo --profile agents --profile amps --profile rag down
+#   docker compose --profile solo --profile demo --profile agents --profile amps --profile rag down
 #
 # ── Ports ──────────────────────────────────────────────────────────────────────
 #   8000  api-service           (OpenAI-compatible endpoint)
@@ -125,8 +133,11 @@ services:
 
   # ── LocalStack — DynamoDB + SQS emulation ─────────────────────────────────
   localstack:
-    profiles: ["demo", "agents", "amps", "rag"]
-    image: localstack/localstack:3.4
+    profiles: ["demo", "agents", "amps", "rag", "solo"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.localstack
+    image: agentic-ai-localstack:latest
     container_name: localstack
     ports:
       - "4566:4566"
@@ -137,6 +148,7 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
+      - SOLO_MODE=${SOLO_MODE:-false}
     volumes:
       - localstack_data:/var/lib/localstack
     healthcheck:
@@ -163,6 +175,40 @@ services:
       RISK_PNL_AGENT_URL: http://risk-pnl-agent:8007
       FINANCIAL_ORCHESTRATOR_URL: http://financial-orchestrator:8003
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+    ports:
+      - "8000:8000"
+    networks:
+      - default
+      - observability
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ── API Service Solo — routes all agents to a single generic-agent ─────────
+  api-solo:
+    profiles: ["solo"]
+    <<: *agent-base
+    container_name: api-service
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: api
+      SKIP_INGEST: "true"
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      KDB_AGENT_URL: http://generic-agent:8001
+      AMPS_AGENT_URL: http://generic-agent:8001
+      PORTFOLIO_AGENT_URL: http://generic-agent:8001
+      CDS_AGENT_URL: http://generic-agent:8001
+      ETF_AGENT_URL: http://generic-agent:8001
+      RISK_PNL_AGENT_URL: http://generic-agent:8001
+      FINANCIAL_ORCHESTRATOR_URL: http://generic-agent:8001
+    depends_on:
+      localstack:
+        condition: service_healthy
+      generic-agent:
+        condition: service_healthy
     ports:
       - "8000:8000"
     networks:
@@ -319,6 +365,26 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # ── Generic Agent — solo mode: one container handles all agent IDs ─────────
+  generic-agent:
+    profiles: ["solo"]
+    <<: *agent-base
+    container_name: generic-agent
+    environment:
+      <<: *common-env
+      AGENT_SERVICE: kdb
+      AGENT_PORT: "8001"
+      KDB_AGENT_ENDPOINT: http://generic-agent:8001
+      SKIP_INGEST: "true"
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # ── Financial Orchestrator — Phase 2 legacy fallback ──────────────────────
   financial-orchestrator:

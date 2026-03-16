@@ -6,15 +6,22 @@ Uses a single structured Haiku completion call (no agent loop) to decide
 which specialist agents to call and whether to call them in parallel or
 sequentially.
 
+Each agent in the routing plan carries:
+  - id:          agent identifier (matches DynamoDB registry)
+  - priority:    "required" | "optional"
+                   required → answer depends on this agent's data
+                   optional → enriches the answer; query is still answerable without it
+  - timeout_ms:  per-agent deadline (overrides config defaults)
+
 The router reads the DynamoDB registry at call time so new agents are
 discovered automatically without code changes.
 
 Usage:
     decision = route_query("dame el VaR del portfolio HY_MAIN")
-    # RouterDecision(agents=["risk-pnl-agent"], strategy="sequential", ...)
+    # RouterDecision(agents=[AgentConfig(id="risk-pnl-agent", priority="required", timeout_ms=90000)], ...)
 
     decision = route_query("exposure en HY bonds y flujos de ETFs")
-    # RouterDecision(agents=["portfolio-agent", "etf-agent"], strategy="parallel", ...)
+    # RouterDecision(agents=[AgentConfig("portfolio-agent", ...), AgentConfig("etf-agent", ...)], ...)
 """
 import json
 import logging
@@ -25,6 +32,17 @@ logger = logging.getLogger(__name__)
 
 # Fallback when DynamoDB is empty or router fails
 _FALLBACK_AGENT = "kdb-agent"
+
+# Default timeouts per agent (ms) — used when the LLM doesn't specify timeout_ms
+_AGENT_DEFAULT_TIMEOUT_MS: dict[str, int] = {
+    "kdb-agent":              90000,   # large parquet scans
+    "amps-agent":             30000,   # real-time pub/sub — must be fast
+    "portfolio-agent":        60000,
+    "cds-agent":              60000,
+    "etf-agent":              60000,
+    "risk-pnl-agent":         90000,   # VaR is CPU-intensive
+    "financial-orchestrator": 90000,
+}
 
 # Static descriptions shown when DynamoDB returns no capabilities
 _AGENT_DESCRIPTIONS = {
@@ -58,13 +76,31 @@ Rules:
 - For live/current/today/'ahora mismo'/'en tiempo real'/'actual' data → include amps-agent
 - For historical analytics, rankings, 6-month trends → include kdb-agent
 
+Priority rules:
+- "required": the query cannot be answered without this agent's data
+- "optional": enriches the answer but the query is still answerable without it
+
+Timeout rules (use these defaults unless the query implies urgency):
+- amps-agent: 30000ms (real-time, must be fast)
+- kdb-agent: 90000ms (parquet scans can be slow)
+- risk-pnl-agent: 90000ms (VaR computation is CPU-intensive)
+- all others: 60000ms
+
 Respond with JSON only:
-{{"agents": ["agent-id-1"], "strategy": "parallel", "reasoning": "one sentence why"}}"""
+{{"agents": [{{"id": "agent-id", "priority": "required", "timeout_ms": 60000}}], "strategy": "parallel", "reasoning": "one sentence why"}}"""
+
+
+@dataclass
+class AgentConfig:
+    """Per-agent routing configuration emitted by the LLM Router."""
+    id: str
+    priority: Literal["required", "optional"] = "required"
+    timeout_ms: int = 60000
 
 
 @dataclass
 class RouterDecision:
-    agents: list[str]
+    agents: list[AgentConfig]
     strategy: Literal["parallel", "sequential"] = "parallel"
     reasoning: str = ""
     fallback_used: bool = field(default=False, repr=False)
@@ -82,7 +118,7 @@ def route_query(query: str) -> RouterDecision:
         query: The user's natural language question
 
     Returns:
-        RouterDecision with agents list and parallel/sequential strategy
+        RouterDecision with AgentConfig list (each carrying priority + timeout_ms)
     """
     from src.config import config
     from src.a2a.registry import list_all_agents
@@ -118,13 +154,16 @@ def route_query(query: str) -> RouterDecision:
     # Mock mode: skip LLM call entirely — route to kdb-agent as default
     if config.LLM_PROVIDER == "mock":
         print("[LLM Router] mock mode → kdb-agent (no LLM call)")
-        return RouterDecision(agents=[_FALLBACK_AGENT], strategy="parallel", reasoning="mock")
+        return RouterDecision(
+            agents=[AgentConfig(id=_FALLBACK_AGENT)],
+            strategy="parallel",
+            reasoning="mock",
+        )
 
     try:
         import litellm
 
         if config.LLM_PROVIDER == "ollama":
-            # Use the fast model if set, otherwise the main model
             ollama_model = config.OLLAMA_FAST_MODEL or config.OLLAMA_MODEL
             response = litellm.completion(
                 model=f"ollama/{ollama_model}",
@@ -134,7 +173,7 @@ def route_query(query: str) -> RouterDecision:
                 ],
                 api_base=config.OLLAMA_BASE_URL,
                 api_key="ollama",
-                max_tokens=256,
+                max_tokens=512,
                 temperature=0,
                 format="json",
             )
@@ -146,7 +185,7 @@ def route_query(query: str) -> RouterDecision:
                     {"role": "user", "content": prompt},
                 ],
                 api_key=config.ANTHROPIC_API_KEY,
-                max_tokens=256,
+                max_tokens=512,
                 temperature=0,
             )
         raw = response.choices[0].message.content.strip()
@@ -156,19 +195,15 @@ def route_query(query: str) -> RouterDecision:
             raw = "\n".join(lines[1:-1] if lines and lines[-1].strip() == "```" else lines[1:]).strip()
         decision = json.loads(raw)
 
-        agents = decision.get("agents", [_FALLBACK_AGENT])
+        agents = _parse_agents(decision.get("agents", []))
         strategy = decision.get("strategy", "parallel")
         reasoning = decision.get("reasoning", "")
 
-        # Validate agent IDs against known list
-        known = set(_AGENT_DESCRIPTIONS.keys())
-        agents = [a for a in agents if a in known] or [_FALLBACK_AGENT]
-
         logger.info(
             "[llm-router] agents=%s strategy=%s reasoning=%s",
-            agents, strategy, reasoning,
+            [(a.id, a.priority) for a in agents], strategy, reasoning,
         )
-        print(f"[LLM Router] → agents={agents} strategy={strategy}")
+        print(f"[LLM Router] → agents={[(a.id, a.priority) for a in agents]} strategy={strategy}")
 
         return RouterDecision(agents=agents, strategy=strategy, reasoning=reasoning)
 
@@ -176,8 +211,44 @@ def route_query(query: str) -> RouterDecision:
         logger.warning("[llm-router] fallback to %s due to error: %s", _FALLBACK_AGENT, e)
         print(f"[LLM Router] fallback → {_FALLBACK_AGENT} (error: {e})")
         return RouterDecision(
-            agents=[_FALLBACK_AGENT],
+            agents=[AgentConfig(id=_FALLBACK_AGENT)],
             strategy="parallel",
             reasoning="fallback",
             fallback_used=True,
         )
+
+
+def _parse_agents(raw_agents: list) -> list[AgentConfig]:
+    """
+    Parse the agents field from the LLM response.
+
+    Handles both the new format (list of objects with id/priority/timeout_ms)
+    and the old format (list of strings) for backward compatibility.
+    Validates agent IDs against the known set and falls back to kdb-agent if empty.
+    """
+    known = set(_AGENT_DESCRIPTIONS.keys())
+    configs: list[AgentConfig] = []
+
+    for item in raw_agents:
+        if isinstance(item, str):
+            # Old format: "kdb-agent"
+            agent_id = item
+            if agent_id not in known:
+                continue
+            configs.append(AgentConfig(
+                id=agent_id,
+                priority="required",
+                timeout_ms=_AGENT_DEFAULT_TIMEOUT_MS.get(agent_id, 60000),
+            ))
+        elif isinstance(item, dict):
+            # New format: {"id": "kdb-agent", "priority": "required", "timeout_ms": 90000}
+            agent_id = item.get("id", "")
+            if agent_id not in known:
+                continue
+            priority = item.get("priority", "required")
+            if priority not in ("required", "optional"):
+                priority = "required"
+            timeout_ms = item.get("timeout_ms", _AGENT_DEFAULT_TIMEOUT_MS.get(agent_id, 60000))
+            configs.append(AgentConfig(id=agent_id, priority=priority, timeout_ms=int(timeout_ms)))
+
+    return configs or [AgentConfig(id=_FALLBACK_AGENT)]

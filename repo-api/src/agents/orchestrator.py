@@ -11,8 +11,13 @@ Entry point called by LangGraph. Routes queries to the appropriate pipeline:
     → General pipeline (Researcher + Synthesizer)
 
 Routing is keyword-based for low latency — no extra LLM call needed.
+
+Confidence scoring:
+  HIGH   — all required agents responded successfully
+  MEDIUM — all required agents responded; one or more optional agents timed out
+  LOW    — one or more required agents timed out or errored
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.agents.researcher import create_researcher
 from src.agents.synthesizer import create_synthesizer
@@ -48,7 +53,9 @@ def _is_financial_query(query: str) -> bool:
 class OrchestratorResult:
     research: str
     synthesis: str
-    route: str = "general"   # "general" | "financial"
+    route: str = "general"              # "general" | "financial"
+    confidence: str = "HIGH"            # "HIGH" | "MEDIUM" | "LOW"
+    routing_plan: dict | None = field(default=None, repr=False)  # for Langfuse tracing
 
 
 def run_strands_orchestrator(query: str, rag_context: list[dict]) -> OrchestratorResult:
@@ -60,9 +67,8 @@ def run_strands_orchestrator(query: str, rag_context: list[dict]) -> Orchestrato
         rag_context: Pre-retrieved docs from the LangGraph RAG node.
 
     Returns:
-        OrchestratorResult with research, synthesis, and route used.
+        OrchestratorResult with research, synthesis, route, and confidence level.
     """
-    # ── Route decision ────────────────────────────────────────────────────────
     if _is_financial_query(query):
         return _run_financial(query, rag_context)
     return _run_general(query, rag_context)
@@ -80,7 +86,6 @@ def _run_financial(query: str, rag_context: list[dict]) -> OrchestratorResult:
     Phase 1 fallback: in-process call.
     """
     import os
-    from src.agents.synthesizer import create_synthesizer
 
     rag_text = ""
     if rag_context:
@@ -100,22 +105,38 @@ def _run_financial(query: str, rag_context: list[dict]) -> OrchestratorResult:
         from src.a2a.parallel_client import call_agents_parallel_sync
 
         decision = route_query(query)
+        routing_plan = {
+            "agents": [
+                {"id": a.id, "priority": a.priority, "timeout_ms": a.timeout_ms}
+                for a in decision.agents
+            ],
+            "strategy": decision.strategy,
+            "reasoning": decision.reasoning,
+            "fallback_used": decision.fallback_used,
+        }
 
         if decision.strategy == "sequential":
-            # Sequential: call agents one by one (risk-pnl handles internal sequencing)
-            results: dict[str, str] = {}
-            for agent_id in decision.agents:
-                results.update(call_agents_parallel_sync([agent_id], full_query))
+            results = {}
+            for agent_config in decision.agents:
+                results.update(call_agents_parallel_sync([agent_config], full_query))
         else:
-            # Parallel: all agents called concurrently
             results = call_agents_parallel_sync(decision.agents, full_query)
 
-        if len(results) == 1:
-            research_text = list(results.values())[0]
-        else:
-            research_text = _merge_parallel_results(query, results)
+        confidence = _compute_confidence(results)
 
-        return OrchestratorResult(research=research_text, synthesis=research_text, route="financial")
+        if len(results) == 1:
+            single = list(results.values())[0]
+            research_text = single.text if hasattr(single, "text") else single
+        else:
+            research_text = _merge_parallel_results(query, results, confidence)
+
+        return OrchestratorResult(
+            research=research_text,
+            synthesis=research_text,
+            route="financial",
+            confidence=confidence,
+            routing_plan=routing_plan,
+        )
 
     # ── Phase 2 fallback: financial-orchestrator via A2A ──────────────────────
     fin_url = os.getenv("FINANCIAL_ORCHESTRATOR_URL", "")
@@ -140,14 +161,59 @@ def _run_financial(query: str, rag_context: list[dict]) -> OrchestratorResult:
     return OrchestratorResult(research=research_text, synthesis=synthesis_text, route="financial")
 
 
-def _merge_parallel_results(query: str, results: dict[str, str]) -> str:
+def _compute_confidence(results: dict) -> str:
+    """
+    Derive overall confidence from agent result metadata.
+
+      HIGH   — all required agents succeeded
+      MEDIUM — all required agents succeeded; some optional timed out/errored
+      LOW    — at least one required agent timed out or errored
+    """
+    from src.a2a.parallel_client import AgentResult
+
+    required_failed = any(
+        isinstance(r, AgentResult) and not r.success and r.priority == "required"
+        for r in results.values()
+    )
+    optional_failed = any(
+        isinstance(r, AgentResult) and not r.success and r.priority == "optional"
+        for r in results.values()
+    )
+
+    if required_failed:
+        return "LOW"
+    if optional_failed:
+        return "MEDIUM"
+    return "HIGH"
+
+
+def _merge_parallel_results(query: str, results: dict, confidence: str = "HIGH") -> str:
     """Merge N agent results into one structured response with per-agent sections."""
+    from src.a2a.parallel_client import AgentResult
+
     sections = []
+    gaps = []
+
     for agent_id, result in results.items():
         header = agent_id.replace("-", " ").title()
-        sections.append(f"## {header}\n\n{result}")
+        if isinstance(result, AgentResult):
+            if result.timed_out:
+                sections.append(f"## {header}\n\n[TIMED OUT — data unavailable]")
+                gaps.append(f"{agent_id} ({result.priority}): timed out after {result.duration_ms:.0f}ms")
+            elif not result.success:
+                sections.append(f"## {header}\n\n[ERROR — {result.error}]")
+                gaps.append(f"{agent_id} ({result.priority}): error")
+            else:
+                sections.append(f"## {header}\n\n{result.text}")
+        else:
+            sections.append(f"## {header}\n\n{result}")
+
     merged = "\n\n---\n\n".join(sections)
-    return f"# Multi-Source Financial Analysis\n\nQuery: {query}\n\n{merged}"
+    footer = f"\n\n---\n\n**Data confidence: {confidence}**"
+    if gaps:
+        footer += "\nMissing data from: " + "; ".join(gaps)
+
+    return f"# Multi-Source Financial Analysis\n\nQuery: {query}\n\n{merged}{footer}"
 
 
 # ── General pipeline ──────────────────────────────────────────────────────────

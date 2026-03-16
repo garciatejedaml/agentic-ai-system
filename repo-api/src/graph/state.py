@@ -26,6 +26,10 @@ class AgentState(TypedDict):
     research: Optional[str]
     synthesis: Optional[str]
 
+    # Routing metadata — serialized RouterDecision for Langfuse tracing
+    routing_plan: Optional[dict]   # {"agents": [...], "strategy": ..., "reasoning": ...}
+    confidence: Optional[str]      # "HIGH" | "MEDIUM" | "LOW"
+
     # Final output
     final_response: Optional[str]
 

@@ -81,7 +81,12 @@ def strands_node(state: AgentState) -> dict:
                 query=state["query"],
                 rag_context=state.get("rag_context") or [],
             )
-            return {"research": result.research, "synthesis": result.synthesis}
+            return {
+                "research": result.research,
+                "synthesis": result.synthesis,
+                "routing_plan": result.routing_plan,
+                "confidence": result.confidence,
+            }
         except Exception as exc:
             exc_str = str(exc).lower()
             is_retryable = any(phrase in exc_str for phrase in _RETRYABLE_PHRASES)

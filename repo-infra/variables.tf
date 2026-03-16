@@ -152,3 +152,9 @@ variable "route53_zone_id" {
   type        = string
   default     = ""
 }
+
+variable "langfuse_host" {
+  description = "Internal URL of the self-hosted Langfuse instance used for LLM tracing (e.g. http://langfuse-web:3000). Leave empty to disable observability."
+  type        = string
+  default     = ""
+}

@@ -79,8 +79,9 @@ resource "aws_ecs_task_definition" "api" {
       { name = "ETF_AGENT_URL",              value = "http://${local.name_prefix}-etf-agent.${var.environment}.local:8006" },
       { name = "RISK_PNL_AGENT_URL",         value = "http://${local.name_prefix}-risk-pnl-agent.${var.environment}.local:8007" },
 
-      # Observability (enable once Langfuse is deployed and LANGFUSE_* secrets set)
-      { name = "OBSERVABILITY_ENABLED", value = "false" },
+      # Observability — Langfuse self-hosted (keys injected via Secrets Manager below)
+      { name = "OBSERVABILITY_ENABLED", value = "true" },
+      { name = "LANGFUSE_HOST",         value = var.langfuse_host },
 
       # Server tuning
       { name = "PORT",            value = "8000" },
@@ -239,6 +240,10 @@ resource "aws_ecs_service" "kdb_agent" {
     container_port   = 8001
   }
 
+  service_registries {
+    registry_arn = aws_service_discovery_service.kdb_agent.arn
+  }
+
   lifecycle { ignore_changes = [desired_count] }
   depends_on = [aws_lb_listener.http, aws_iam_role_policy_attachment.ecs_execution_standard]
 }
@@ -313,6 +318,10 @@ resource "aws_ecs_service" "amps_agent" {
     target_group_arn = aws_lb_target_group.amps_agent.arn
     container_name   = "amps-agent"
     container_port   = 8002
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.amps_agent.arn
   }
 
   lifecycle { ignore_changes = [desired_count] }
@@ -393,6 +402,10 @@ resource "aws_ecs_service" "financial_orchestrator" {
     container_port   = 8003
   }
 
+  service_registries {
+    registry_arn = aws_service_discovery_service.financial_orchestrator.arn
+  }
+
   lifecycle { ignore_changes = [desired_count] }
   depends_on = [aws_lb_listener.http, aws_iam_role_policy_attachment.ecs_execution_standard]
 }
@@ -447,6 +460,9 @@ resource "aws_ecs_service" "portfolio_agent" {
     target_group_arn = aws_lb_target_group.portfolio_agent.arn
     container_name   = "portfolio-agent"
     container_port   = 8004
+  }
+  service_registries {
+    registry_arn = aws_service_discovery_service.portfolio_agent.arn
   }
   lifecycle { ignore_changes = [desired_count] }
   depends_on = [aws_lb_listener.http, aws_iam_role_policy_attachment.ecs_execution_standard]
@@ -503,6 +519,9 @@ resource "aws_ecs_service" "cds_agent" {
     container_name   = "cds-agent"
     container_port   = 8005
   }
+  service_registries {
+    registry_arn = aws_service_discovery_service.cds_agent.arn
+  }
   lifecycle { ignore_changes = [desired_count] }
   depends_on = [aws_lb_listener.http, aws_iam_role_policy_attachment.ecs_execution_standard]
 }
@@ -557,6 +576,9 @@ resource "aws_ecs_service" "etf_agent" {
     target_group_arn = aws_lb_target_group.etf_agent.arn
     container_name   = "etf-agent"
     container_port   = 8006
+  }
+  service_registries {
+    registry_arn = aws_service_discovery_service.etf_agent.arn
   }
   lifecycle { ignore_changes = [desired_count] }
   depends_on = [aws_lb_listener.http, aws_iam_role_policy_attachment.ecs_execution_standard]
@@ -614,6 +636,9 @@ resource "aws_ecs_service" "risk_pnl_agent" {
     target_group_arn = aws_lb_target_group.risk_pnl_agent.arn
     container_name   = "risk-pnl-agent"
     container_port   = 8007
+  }
+  service_registries {
+    registry_arn = aws_service_discovery_service.risk_pnl_agent.arn
   }
   lifecycle { ignore_changes = [desired_count] }
   depends_on = [aws_lb_listener.http, aws_iam_role_policy_attachment.ecs_execution_standard]

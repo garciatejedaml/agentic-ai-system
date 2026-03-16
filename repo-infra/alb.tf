@@ -175,6 +175,156 @@ resource "aws_lb_listener_rule" "financial_orchestrator" {
   }
 }
 
+# ── Phase 3: Portfolio / CDS / ETF / Risk-PnL target groups + rules ──────────
+
+resource "aws_lb_target_group" "portfolio_agent" {
+  name        = "${local.name_prefix}-portfolio-tg"
+  port        = 8004
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    path                = "/health"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 10
+    interval            = 30
+    matcher             = "200"
+  }
+
+  deregistration_delay = 30
+  tags = { Name = "${local.name_prefix}-portfolio-tg" }
+}
+
+resource "aws_lb_target_group" "cds_agent" {
+  name        = "${local.name_prefix}-cds-tg"
+  port        = 8005
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    path                = "/health"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 10
+    interval            = 30
+    matcher             = "200"
+  }
+
+  deregistration_delay = 30
+  tags = { Name = "${local.name_prefix}-cds-tg" }
+}
+
+resource "aws_lb_target_group" "etf_agent" {
+  name        = "${local.name_prefix}-etf-tg"
+  port        = 8006
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    path                = "/health"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 10
+    interval            = 30
+    matcher             = "200"
+  }
+
+  deregistration_delay = 30
+  tags = { Name = "${local.name_prefix}-etf-tg" }
+}
+
+resource "aws_lb_target_group" "risk_pnl_agent" {
+  name        = "${local.name_prefix}-risk-pnl-tg"
+  port        = 8007
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    path                = "/health"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 10
+    interval            = 30
+    matcher             = "200"
+  }
+
+  deregistration_delay = 30
+  tags = { Name = "${local.name_prefix}-risk-pnl-tg" }
+}
+
+resource "aws_lb_listener_rule" "portfolio_agent" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 40
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.portfolio_agent.arn
+  }
+
+  condition {
+    http_header {
+      http_header_name = "X-Agent-Service"
+      values           = ["portfolio"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "cds_agent" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 50
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.cds_agent.arn
+  }
+
+  condition {
+    http_header {
+      http_header_name = "X-Agent-Service"
+      values           = ["cds"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "etf_agent" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 60
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.etf_agent.arn
+  }
+
+  condition {
+    http_header {
+      http_header_name = "X-Agent-Service"
+      values           = ["etf"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "risk_pnl_agent" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 70
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.risk_pnl_agent.arn
+  }
+
+  condition {
+    http_header {
+      http_header_name = "X-Agent-Service"
+      values           = ["risk-pnl"]
+    }
+  }
+}
+
 # ── HTTPS Listener (production — uncomment when ACM cert is ready) ────────────
 # resource "aws_lb_listener" "https" {
 #   load_balancer_arn = aws_lb.api.arn

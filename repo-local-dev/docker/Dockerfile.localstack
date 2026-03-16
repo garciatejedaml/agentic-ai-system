@@ -1,0 +1,19 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# LocalStack image with init script baked in.
+# Avoids volume-mount issues on VDI environments.
+#
+# Build (from repo-local-dev/):
+#   docker build -f docker/Dockerfile.localstack -t agentic-ai-localstack:latest .
+#
+# The init script runs automatically after LocalStack is ready and creates:
+#   - DynamoDB: agent-registry, sessions, terraform-state-lock
+#   - SQS: job queue + DLQ
+#   - Secrets Manager: app secrets placeholder
+#   - S3: terraform state bucket
+#   - Pre-registers all 7 A2A agents in DynamoDB
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM localstack/localstack:3.4
+
+COPY scripts/localstack_init.sh /etc/localstack/init/ready.d/localstack_init.sh
+RUN chmod +x /etc/localstack/init/ready.d/localstack_init.sh

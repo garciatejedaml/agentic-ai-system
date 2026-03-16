@@ -119,93 +119,118 @@ $AWS logs create-log-group \
 
 echo "[localstack-init] CloudWatch Logs: /agentic-ai/staging/api created"
 
-# ── Phase 2: Pre-register A2A agents in DynamoDB ──────────────────────────────
-# Seeds the registry so the Financial Orchestrator can discover agents
-# before containers have fully started (avoids cold-start race condition).
-# Each container overwrites its entry with live status on startup.
+# ── A2A Agent registry ────────────────────────────────────────────────────────
+# SOLO_MODE=true  → all 6 agents point to a single generic-agent container.
+#                   Used for local dev on resource-constrained machines (MacBook).
+#                   Tests the full pipeline: LLM Router, DynamoDB, A2A, confidence
+#                   scoring, Langfuse tracing — with one container instead of 7.
+#
+# SOLO_MODE=false → each agent has its own container and URL (default).
 
 TTL=$(( $(date +%s) + 3600 ))
 
-$AWS dynamodb put-item \
-  --table-name agentic-ai-staging-agent-registry \
-  --item "{
-    \"agent_id\":     {\"S\": \"kdb-agent\"},
-    \"desk_name\":    {\"S\": \"HY\"},
-    \"endpoint\":     {\"S\": \"http://kdb-agent:8001\"},
-    \"capabilities\": {\"SS\": [\"bond_analytics\", \"trader_performance\", \"rfq_history\"]},
-    \"status\":       {\"S\": \"registered\"},
-    \"ttl\":          {\"N\": \"${TTL}\"}
-  }" > /dev/null
+if [ "${SOLO_MODE:-false}" = "true" ]; then
 
-$AWS dynamodb put-item \
-  --table-name agentic-ai-staging-agent-registry \
-  --item "{
-    \"agent_id\":     {\"S\": \"amps-agent\"},
-    \"desk_name\":    {\"S\": \"HY\"},
-    \"endpoint\":     {\"S\": \"http://amps-agent:8002\"},
-    \"capabilities\": {\"SS\": [\"realtime_positions\", \"live_orders\", \"market_data\"]},
-    \"status\":       {\"S\": \"registered\"},
-    \"ttl\":          {\"N\": \"${TTL}\"}
-  }" > /dev/null
+  GENERIC="http://generic-agent:8001"
+  echo "[localstack-init] SOLO_MODE=true → all agents → ${GENERIC}"
 
-$AWS dynamodb put-item \
-  --table-name agentic-ai-staging-agent-registry \
-  --item "{
-    \"agent_id\":     {\"S\": \"financial-orchestrator\"},
-    \"desk_name\":    {\"S\": \"HY\"},
-    \"endpoint\":     {\"S\": \"http://financial-orchestrator:8003\"},
-    \"capabilities\": {\"SS\": [\"financial_analysis\", \"bond_trading\", \"multi_source\"]},
-    \"status\":       {\"S\": \"registered\"},
-    \"ttl\":          {\"N\": \"${TTL}\"}
-  }" > /dev/null
+  for AGENT_ID in kdb-agent amps-agent portfolio-agent cds-agent etf-agent risk-pnl-agent financial-orchestrator; do
+    $AWS dynamodb put-item \
+      --table-name agentic-ai-staging-agent-registry \
+      --item "{
+        \"agent_id\":     {\"S\": \"${AGENT_ID}\"},
+        \"desk_name\":    {\"S\": \"HY\"},
+        \"endpoint\":     {\"S\": \"${GENERIC}\"},
+        \"capabilities\": {\"SS\": [\"generic\"]},
+        \"status\":       {\"S\": \"registered\"},
+        \"ttl\":          {\"N\": \"${TTL}\"}
+      }" > /dev/null
+  done
 
-# ── Phase 3: Pre-register new specialist agents ────────────────────────────────
+  echo "[localstack-init] DynamoDB: 7 agents registered → generic-agent:8001 (solo mode)"
 
-$AWS dynamodb put-item \
-  --table-name agentic-ai-staging-agent-registry \
-  --item "{
-    \"agent_id\":     {\"S\": \"portfolio-agent\"},
-    \"desk_name\":    {\"S\": \"HY\"},
-    \"endpoint\":     {\"S\": \"http://portfolio-agent:8004\"},
-    \"capabilities\": {\"SS\": [\"portfolio_holdings\", \"portfolio_exposure\", \"portfolio_concentration\"]},
-    \"status\":       {\"S\": \"registered\"},
-    \"ttl\":          {\"N\": \"${TTL}\"}
-  }" > /dev/null
+else
 
-$AWS dynamodb put-item \
-  --table-name agentic-ai-staging-agent-registry \
-  --item "{
-    \"agent_id\":     {\"S\": \"cds-agent\"},
-    \"desk_name\":    {\"S\": \"HY\"},
-    \"endpoint\":     {\"S\": \"http://cds-agent:8005\"},
-    \"capabilities\": {\"SS\": [\"cds_spreads\", \"cds_term_structure\", \"cds_screener\"]},
-    \"status\":       {\"S\": \"registered\"},
-    \"ttl\":          {\"N\": \"${TTL}\"}
-  }" > /dev/null
+  $AWS dynamodb put-item \
+    --table-name agentic-ai-staging-agent-registry \
+    --item "{
+      \"agent_id\":     {\"S\": \"kdb-agent\"},
+      \"desk_name\":    {\"S\": \"HY\"},
+      \"endpoint\":     {\"S\": \"http://kdb-agent:8001\"},
+      \"capabilities\": {\"SS\": [\"bond_analytics\", \"trader_performance\", \"rfq_history\"]},
+      \"status\":       {\"S\": \"registered\"},
+      \"ttl\":          {\"N\": \"${TTL}\"}
+    }" > /dev/null
 
-$AWS dynamodb put-item \
-  --table-name agentic-ai-staging-agent-registry \
-  --item "{
-    \"agent_id\":     {\"S\": \"etf-agent\"},
-    \"desk_name\":    {\"S\": \"HY\"},
-    \"endpoint\":     {\"S\": \"http://etf-agent:8006\"},
-    \"capabilities\": {\"SS\": [\"etf_nav_aum\", \"etf_flows\", \"etf_basket\"]},
-    \"status\":       {\"S\": \"registered\"},
-    \"ttl\":          {\"N\": \"${TTL}\"}
-  }" > /dev/null
+  $AWS dynamodb put-item \
+    --table-name agentic-ai-staging-agent-registry \
+    --item "{
+      \"agent_id\":     {\"S\": \"amps-agent\"},
+      \"desk_name\":    {\"S\": \"HY\"},
+      \"endpoint\":     {\"S\": \"http://amps-agent:8002\"},
+      \"capabilities\": {\"SS\": [\"realtime_positions\", \"live_orders\", \"market_data\"]},
+      \"status\":       {\"S\": \"registered\"},
+      \"ttl\":          {\"N\": \"${TTL}\"}
+    }" > /dev/null
 
-$AWS dynamodb put-item \
-  --table-name agentic-ai-staging-agent-registry \
-  --item "{
-    \"agent_id\":     {\"S\": \"risk-pnl-agent\"},
-    \"desk_name\":    {\"S\": \"HY\"},
-    \"endpoint\":     {\"S\": \"http://risk-pnl-agent:8007\"},
-    \"capabilities\": {\"SS\": [\"var_computation\", \"dv01_cs01\", \"pnl_attribution\"]},
-    \"status\":       {\"S\": \"registered\"},
-    \"ttl\":          {\"N\": \"${TTL}\"}
-  }" > /dev/null
+  $AWS dynamodb put-item \
+    --table-name agentic-ai-staging-agent-registry \
+    --item "{
+      \"agent_id\":     {\"S\": \"financial-orchestrator\"},
+      \"desk_name\":    {\"S\": \"HY\"},
+      \"endpoint\":     {\"S\": \"http://financial-orchestrator:8003\"},
+      \"capabilities\": {\"SS\": [\"financial_analysis\", \"bond_trading\", \"multi_source\"]},
+      \"status\":       {\"S\": \"registered\"},
+      \"ttl\":          {\"N\": \"${TTL}\"}
+    }" > /dev/null
 
-echo "[localstack-init] DynamoDB: 7 A2A agents pre-registered (3 Phase 2 + 4 Phase 3)"
+  $AWS dynamodb put-item \
+    --table-name agentic-ai-staging-agent-registry \
+    --item "{
+      \"agent_id\":     {\"S\": \"portfolio-agent\"},
+      \"desk_name\":    {\"S\": \"HY\"},
+      \"endpoint\":     {\"S\": \"http://portfolio-agent:8004\"},
+      \"capabilities\": {\"SS\": [\"portfolio_holdings\", \"portfolio_exposure\", \"portfolio_concentration\"]},
+      \"status\":       {\"S\": \"registered\"},
+      \"ttl\":          {\"N\": \"${TTL}\"}
+    }" > /dev/null
+
+  $AWS dynamodb put-item \
+    --table-name agentic-ai-staging-agent-registry \
+    --item "{
+      \"agent_id\":     {\"S\": \"cds-agent\"},
+      \"desk_name\":    {\"S\": \"HY\"},
+      \"endpoint\":     {\"S\": \"http://cds-agent:8005\"},
+      \"capabilities\": {\"SS\": [\"cds_spreads\", \"cds_term_structure\", \"cds_screener\"]},
+      \"status\":       {\"S\": \"registered\"},
+      \"ttl\":          {\"N\": \"${TTL}\"}
+    }" > /dev/null
+
+  $AWS dynamodb put-item \
+    --table-name agentic-ai-staging-agent-registry \
+    --item "{
+      \"agent_id\":     {\"S\": \"etf-agent\"},
+      \"desk_name\":    {\"S\": \"HY\"},
+      \"endpoint\":     {\"S\": \"http://etf-agent:8006\"},
+      \"capabilities\": {\"SS\": [\"etf_nav_aum\", \"etf_flows\", \"etf_basket\"]},
+      \"status\":       {\"S\": \"registered\"},
+      \"ttl\":          {\"N\": \"${TTL}\"}
+    }" > /dev/null
+
+  $AWS dynamodb put-item \
+    --table-name agentic-ai-staging-agent-registry \
+    --item "{
+      \"agent_id\":     {\"S\": \"risk-pnl-agent\"},
+      \"desk_name\":    {\"S\": \"HY\"},
+      \"endpoint\":     {\"S\": \"http://risk-pnl-agent:8007\"},
+      \"capabilities\": {\"SS\": [\"var_computation\", \"dv01_cs01\", \"pnl_attribution\"]},
+      \"status\":       {\"S\": \"registered\"},
+      \"ttl\":          {\"N\": \"${TTL}\"}
+    }" > /dev/null
+
+  echo "[localstack-init] DynamoDB: 7 A2A agents pre-registered (3 Phase 2 + 4 Phase 3)"
+
+fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
