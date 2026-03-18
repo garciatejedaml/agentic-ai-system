@@ -30,3 +30,18 @@ skip_ingest  = "false"  # set to "true" after first run to skip re-ingestion
 aurora_min_capacity       = 0.5  # auto-pauses when idle
 aurora_max_capacity       = 4
 aurora_deletion_protection = false  # set true for production
+
+# AMPS server (leave as localhost if AMPS is not in scope for this deployment)
+amps_host     = "localhost"
+amps_tcp_port = 9007
+
+# Observability — Langfuse (leave empty to disable tracing)
+# If self-hosting Langfuse inside the same VPC, use its internal ALB DNS or Cloud Map name.
+# The API also needs LANGFUSE_PUBLIC_KEY + LANGFUSE_SECRET_KEY in Secrets Manager (step 7).
+langfuse_host = ""
+# langfuse_host = "http://langfuse-web.staging.local:3000"
+
+# Cross-region failover (Phase 4 — leave false for staging)
+cross_region_failover_enabled = false
+secondary_region               = "us-west-2"
+# route53_zone_id              = "Z1234567890"
