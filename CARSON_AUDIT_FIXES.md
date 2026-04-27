@@ -205,6 +205,7 @@ This document is meant to be read sequentially by an agent (Copilot, Carson, or 
 | FIX #35 | P2 | 5 | Action queue is a JSON file (race conditions) |
 | FIX #36 | P2 | 5 | JobRecord has duplicate result/response fields |
 | FIX #37 | P2 | 5 | mcp_loader/agents 4-level parent chain |
+| FIX #38 | P1 | 5 | Dual-mode deployment scaffolding (bridge to cloud) |
 | CLD #1 | P0 | Cloud | Containerize Carson with Dockerfile + ECR |
 | CLD #2 | P0 | Cloud | Terraform module for ECS Fargate + ALB + VPC |
 | CLD #3 | P0 | Cloud | Secrets in AWS Secrets Manager + KMS |
@@ -266,6 +267,10 @@ Highest cost/risk fixes first:
 23. **CLD #11** — PII redaction in logs and traces (2 days)
 24. **CLD #12** — audit log of writes to S3 (1 day)
 25. **FIX #0.6** — encrypt user conversations (2 days)
+
+### Pre-D — Dual-mode bridge (1 day, mandatory before Sprint 9)
+
+25b. **FIX #38** — Dual-mode deployment scaffolding. Apply BEFORE starting Phase D / Sprint 9. Mandatory precondition for FIX #19 (Flask→FastAPI) and any future CLD fix that introduces an AWS dependency. Adds a single `deployment.mode` flag (`local` | `cloud`) plus `observability/` module that dispatches to `init_local_observability()` or `init_cloud_observability()` based on the flag. Without this, every subsequent fix has to retrofit cloud-aware code paths after the fact.
 
 ### Sprint 9-13 (weeks 9-13) — polish and cleanup
 
@@ -1609,6 +1614,211 @@ Brief summary, full content in 2026-04-26 deep audit:
 - **#35** Action queue JSON file → SQLite-backed queue with WAL, atomic dequeue.
 - **#36** `JobRecord` `result`/`response` duplicate: keep `response`, deprecation shim, one-shot migration script for existing JSONs.
 - **#37** 4-level parent traversal: solved by FIX #18 (proper packaging).
+
+---
+
+## FIX #38 — Dual-mode deployment scaffolding
+
+**Priority**: P1 · **Tier**: 5 (Bridge to Cloud)
+**Files**:
+- `langgraph-system/config.yaml` (add `deployment` + `observability` sections)
+- `langgraph-system/carson_agents/observability/` (new module: `__init__.py`, `local.py`, `cloud.py`)
+- `langgraph-system/carson_service.py` (init dispatch on startup)
+
+### Problem
+
+Carson is being modernised over multiple sprints. Every observability/persistence fix between now and "fully cloud" risks introducing AWS-only code paths that silently break local development. Without explicit dual-mode scaffolding, developers end up either testing only in cloud (losing local velocity) or scattering ad-hoc `if AWS_REGION:` checks across the codebase.
+
+This fix is a precondition for clean execution of FIX #19 (Flask→FastAPI), FIX #23 (dashboard split), and any future Cloud (CLD) fix that introduces an AWS dependency.
+
+### Current
+
+There is no central `deployment.mode` flag. `carson_service.py` imports observability backends statically. Cloud-only modules (e.g. `CloudWatchExporter` from CLD #5) cannot be safely added without breaking local imports.
+
+### Fixed
+
+#### Step 1 — `config.yaml` additions
+
+```yaml
+deployment:
+  mode: "local"              # local | cloud
+  team_id: "ahtw"
+
+observability:
+  metrics_backend: "memory"      # memory | cloudwatch
+  traces_backend: "console"      # console | xray | otlp
+  logs_backend: "file"           # file | cloudwatch | stdout
+  logs_path: "./carson.log"      # for file backend
+  pii_redaction: true
+  audit_log:
+    enabled: true
+    backend: "file"              # file | s3
+    path: "./carson_data/audit/"
+    bucket: ""                   # for s3 backend (empty in local mode)
+```
+
+`mode: "local"` is the default — existing local installs keep working unchanged. The flag is the only thing the cloud migration day needs to flip.
+
+#### Step 2 — new module `langgraph-system/carson_agents/observability/`
+
+`observability/__init__.py`:
+
+```python
+"""Dual-mode observability initialisation.
+
+Reads deployment.mode from config.yaml and initialises the appropriate
+backends. Local mode = in-memory + file. Cloud mode = CloudWatch + X-Ray.
+"""
+import logging
+from ..config import get_config
+
+logger = logging.getLogger(__name__)
+
+
+def init_observability():
+    cfg = get_config()
+    mode = cfg.get("deployment", {}).get("mode", "local")
+    logger.info(f"Initialising observability in '{mode}' mode")
+    if mode == "cloud":
+        from .cloud import init_cloud_observability
+        init_cloud_observability(cfg)
+    elif mode == "local":
+        from .local import init_local_observability
+        init_local_observability(cfg)
+    else:
+        raise ValueError(
+            f"Unknown deployment.mode: {mode!r} (expected 'local' or 'cloud')"
+        )
+```
+
+`observability/local.py`:
+
+```python
+"""Local mode: file logs, in-memory metrics, console traces."""
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+def init_local_observability(cfg):
+    obs = cfg.get("observability", {})
+    logs_backend = obs.get("logs_backend", "file")
+
+    if logs_backend == "file":
+        logs_path = Path(obs.get("logs_path", "./carson.log"))
+        logs_path.parent.mkdir(exist_ok=True, parents=True)
+        handler = logging.FileHandler(str(logs_path))
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
+        ))
+        logging.root.addHandler(handler)
+        logger.info(f"Local logs → {logs_path}")
+    elif logs_backend == "stdout":
+        logging.basicConfig(level=cfg.get("logging", {}).get("level", "INFO"))
+
+    # Metrics: token_tracker keeps stats in memory (default).
+    # Traces: no exporter → spans are no-ops in production but available
+    #         to console-print in dev via OTEL_TRACES_EXPORTER=console.
+    # Audit: writes to file backend (handled by audit module reading the same config).
+```
+
+`observability/cloud.py`:
+
+```python
+"""Cloud mode: CloudWatch + X-Ray + OpenTelemetry."""
+import logging
+import os
+
+logger = logging.getLogger(__name__)
+
+
+def init_cloud_observability(cfg):
+    if not os.environ.get("AWS_REGION"):
+        raise RuntimeError(
+            "deployment.mode=cloud requires AWS_REGION env var. "
+            "Either set it (typical for ECS Fargate) or switch to mode=local."
+        )
+
+    team_id = cfg["deployment"]["team_id"]
+
+    # Metrics: CloudWatchExporter from CLD #5 (only imported in cloud mode)
+    if cfg["observability"].get("metrics_backend") == "cloudwatch":
+        from .cw_exporter import CloudWatchExporter
+        CloudWatchExporter(namespace=f"Carson/{team_id}", team_id=team_id).start()
+        logger.info(f"CloudWatch metrics exporter started for Carson/{team_id}")
+
+    # Traces: X-Ray via OpenTelemetry (CLD #6)
+    if cfg["observability"].get("traces_backend") in ("xray", "otlp"):
+        from .tracing import init_xray_tracing
+        init_xray_tracing(team_id=team_id)
+        logger.info("X-Ray distributed tracing initialised")
+```
+
+Files `cw_exporter.py` and `tracing.py` are added later by CLD #5 and CLD #6 respectively. They are intentionally absent in this fix — local installs do not need them. Imports of these modules are lazy (inside `init_cloud_observability()`) so a local install with `mode: "local"` does not need `boto3` or the OpenTelemetry SDK.
+
+#### Step 3 — `carson_service.py` startup hook
+
+Add at the top of `carson_service.py`, right after the proxy block (FIX #0.1) and before the FastAPI/Flask app construction:
+
+```python
+from carson_agents.observability import init_observability
+init_observability()
+```
+
+#### Step 4 — `requirements.txt` split
+
+Move cloud-only deps to a separate `requirements-cloud.txt` so local installs do not pull `boto3`, `opentelemetry-*`, etc.:
+
+```
+# requirements.txt (local-friendly base)
+flask>=3.0.0
+langgraph>=0.2.0
+chromadb>=0.4.0
+cdaosdk-all>=12.0.0
+# ... rest of base deps ...
+
+# requirements-cloud.txt (only when mode=cloud)
+-r requirements.txt
+boto3>=1.34.0
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp>=1.20.0
+opentelemetry-propagator-aws-xray>=1.0.0
+opentelemetry-sdk-extension-aws>=2.0.0
+```
+
+In the Dockerfile (CLD #1), install `requirements-cloud.txt` instead of `requirements.txt`.
+
+### Justification
+
+- **One flag, one decision.** Every future cloud-aware fix (FIX #19, #23, CLD #5, CLD #6, CLD #11, CLD #12) checks `deployment.mode` exactly once at the entry point — no scattered conditionals.
+- **Local stays default.** `mode: "local"` is the out-of-box value; existing dev environments keep working without config changes.
+- **Cloud migration is config-flip + IaC.** When the team goes to AWS, switching `mode: "cloud"` plus deploying the Terraform from CLD #2 is the entire migration. No code changes for cloud-aware modules.
+- **Imports are lazy.** Cloud-only modules are imported inside `init_cloud_observability()`, never at module top-level. Local installs without `boto3` / OpenTelemetry keep working.
+- **Testable in both modes.** Same `init_observability()` entry point. Test fixtures override `mode` per test (e.g. `pytest --deployment-mode=cloud` flips a session-scoped fixture).
+
+### Verification
+
+1. With `deployment.mode: "local"` (default):
+   - Start Carson. Log line shows `Initialising observability in 'local' mode`.
+   - Confirm `./carson.log` file is created and receives entries.
+   - Confirm `token_tracker.get_stats()` returns in-memory data.
+
+2. With `deployment.mode: "cloud"` but **no** `AWS_REGION`:
+   - Start Carson. Expect immediate `RuntimeError` from `init_cloud_observability()` with the message about needing `AWS_REGION`.
+
+3. With `deployment.mode: "cloud"` + `AWS_REGION=us-east-1` + valid AWS creds + `requirements-cloud.txt` installed:
+   - Start Carson. CloudWatch namespace `Carson/${team_id}` shows metric activity within 60s.
+
+4. With invalid value (`deployment.mode: "banana"`):
+   - Expect immediate `ValueError` with clear message listing valid options.
+
+### Cloud impact
+
+This fix is **the bridge** between local-first fixes (Tier 0–5, FIX #1–#37) and the Cloud sections (CLD #1–#15). After FIX #38, every CLD fix's first line becomes "Set `deployment.mode: cloud` in `config.yaml`". The remaining work in each CLD fix is purely the AWS infra wiring; the Carson code is already cloud-aware.
+
+Apply this fix BEFORE FIX #19 (Flask→FastAPI) so the new FastAPI app's startup hook uses `init_observability()` from day one, instead of being retrofitted later.
 
 ---
 
