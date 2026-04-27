@@ -13,14 +13,16 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
-from . import db, simulator
+from . import db, ops_db, simulator
 from .routes import router, mount_static
 
 
 def create_app(seed: bool = True, simulate: bool = True) -> FastAPI:
     db.init_db()
+    ops_db.init_ops_db()
     if seed:
         simulator.seed_history()
+        simulator.seed_ops_history()
 
     app = FastAPI(title="Carson dashboard")
     app.include_router(router)
@@ -34,6 +36,7 @@ def create_app(seed: bool = True, simulate: bool = True) -> FastAPI:
         @app.on_event("startup")
         async def _start_sim():
             asyncio.create_task(simulator.live_loop(interval=8.0))
+            asyncio.create_task(simulator.ops_live_loop(interval=5.0))
 
     return app
 

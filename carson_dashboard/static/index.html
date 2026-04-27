@@ -16,9 +16,14 @@
   </div>
   <nav class="tabs">
     <a href="#/" data-tab="live">live</a>
+    <a href="#/ops" data-tab="ops">ops</a>
     <a href="#/history" data-tab="history">history</a>
   </nav>
   <div class="topright">
+    <span class="bell" id="bell">
+      <span class="bell-state default" id="perm-pill">checking</span>
+      <span class="bell-text">notifications</span>
+    </span>
     <span class="conn"><span class="conn-dot"></span><span id="conn-text">connecting</span></span>
   </div>
 </header>
@@ -59,6 +64,70 @@
       </div>
       <div class="timeline" id="timeline"></div>
     </div>
+  </section>
+</template>
+
+<template id="tpl-ops">
+  <section class="view view-ops">
+
+    <h3 class="ops-h">jira intake → auto-routing</h3>
+    <div class="ops-row ops-row-3">
+      <div class="ops-card">
+        <div class="ops-card-h"><span>incoming</span><span id="ops-jira-count">—</span></div>
+        <div class="jira-list" id="jira-list"></div>
+      </div>
+
+      <div class="ops-card ops-router">
+        <div class="ops-card-h"><span>router · haiku 4.5</span><span id="ops-router-backend">heuristic</span></div>
+        <svg id="ops-router-svg" viewBox="0 0 520 300" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="router-signals">
+          <div class="rs-h">classifier signals</div>
+          <div id="router-signals" class="rs-list"></div>
+        </div>
+      </div>
+
+      <div class="ops-card">
+        <div class="ops-card-h"><span>active jobs</span><span id="ops-jobs-count">—</span></div>
+        <div class="jobs-list" id="jobs-list"></div>
+      </div>
+    </div>
+
+    <h3 class="ops-h">ops feed · jenkins · spinnaker · pull requests</h3>
+    <div class="ops-feed">
+      <div class="lane">
+        <div class="lane-h"><span class="lane-title"><span class="lane-icon icon-jenkins">J</span> Jenkins</span><span class="lane-count" id="cnt-jenkins">—</span></div>
+        <div class="lane-list" id="lane-jenkins"></div>
+      </div>
+      <div class="lane">
+        <div class="lane-h"><span class="lane-title"><span class="lane-icon icon-spinnaker">S</span> Spinnaker</span><span class="lane-count" id="cnt-spinnaker">—</span></div>
+        <div class="lane-list" id="lane-spinnaker"></div>
+      </div>
+      <div class="lane">
+        <div class="lane-h"><span class="lane-title"><span class="lane-icon icon-pr">P</span> Pull requests</span><span class="lane-count" id="cnt-github">—</span></div>
+        <div class="lane-list" id="lane-github"></div>
+      </div>
+    </div>
+
+    <h3 class="ops-h">browser notifications · human-in-the-loop</h3>
+    <div class="ops-notif">
+      <div class="ops-card">
+        <div class="perm-row">
+          <span>permission</span>
+          <span id="perm-state">checking…</span>
+        </div>
+        <button class="btn-primary" id="btn-enable" type="button">enable browser notifications</button>
+        <button class="btn-warn" id="btn-test" type="button">trigger demo HITL alert</button>
+        <div class="toast-prev" id="toast-prev">
+          <div class="toast-h"><span class="toast-icon">!</span> Carson · HITL approval needed</div>
+          <div class="toast-b" id="toast-b">last alert appears here</div>
+        </div>
+      </div>
+      <div class="ops-card">
+        <div class="rules-h">notification rules</div>
+        <div class="rules-list" id="rules-list"></div>
+      </div>
+    </div>
+
   </section>
 </template>
 
@@ -144,5 +213,6 @@
 </template>
 
 <script src="/dashboard/static/dashboard.js"></script>
+<script src="/dashboard/static/ops.js"></script>
 </body>
 </html>

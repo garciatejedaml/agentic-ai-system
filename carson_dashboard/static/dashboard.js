@@ -612,6 +612,7 @@ function setTab(name) {
 function route() {
   const hash = location.hash || "#/";
   if (hash === "#/" || hash === "") return showLive();
+  if (hash === "#/ops" && typeof window.showOps === "function") return window.showOps();
   if (hash === "#/history") return showHistory();
   if (hash.startsWith("#/run/")) return showRun(hash.slice(6));
   showLive();
