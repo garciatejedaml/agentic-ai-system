@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Carson · agent dashboard</title>
+<link rel="stylesheet" href="/dashboard/static/dashboard.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark"></span>
+    <span class="brand-name">carson</span>
+    <span class="brand-sub">agent observability</span>
+  </div>
+  <nav class="tabs">
+    <a href="#/" data-tab="live">live</a>
+    <a href="#/history" data-tab="history">history</a>
+  </nav>
+  <div class="topright">
+    <span class="conn"><span class="conn-dot"></span><span id="conn-text">connecting</span></span>
+  </div>
+</header>
+
+<main id="view"></main>
+
+<template id="tpl-live">
+  <section class="view view-live">
+    <div class="stats">
+      <div class="stat"><div class="lbl">tokens / min</div><div class="val" id="stat-tpm">—</div></div>
+      <div class="stat"><div class="lbl">avg latency</div><div class="val" id="stat-lat">—</div></div>
+      <div class="stat"><div class="lbl">active runs</div><div class="val" id="stat-active">0</div></div>
+      <div class="stat"><div class="lbl">errors · 1h</div><div class="val" id="stat-err">0</div></div>
+    </div>
+
+    <div class="row">
+      <div class="panel panel-graph">
+        <div class="phead">
+          <span class="ptitle">agent graph · langgraph</span>
+          <span class="ptitle"><span class="livedot"></span>live</span>
+        </div>
+        <svg id="agent-graph" viewBox="0 0 520 360" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+
+      <div class="panel panel-log">
+        <div class="phead">
+          <span class="ptitle">reasoning stream</span>
+          <span class="ptitle" id="log-window">last 60s</span>
+        </div>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="phead">
+        <span class="ptitle">timeline · last 60s</span>
+        <span class="ptitle">click a run to open detail</span>
+      </div>
+      <div class="timeline" id="timeline"></div>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-history">
+  <section class="view view-history">
+    <div class="bar">
+      <div class="pills" id="range-pills">
+        <span class="pill" data-hours="1">1h</span>
+        <span class="pill" data-hours="24">24h</span>
+        <span class="pill on" data-hours="168">7d</span>
+        <span class="pill" data-hours="720">30d</span>
+      </div>
+      <div class="meta" id="range-meta">—</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="lbl">runs</div><div class="val" id="hs-runs">—</div></div>
+      <div class="stat"><div class="lbl">avg duration</div><div class="val" id="hs-dur">—</div></div>
+      <div class="stat"><div class="lbl">success rate</div><div class="val" id="hs-ok">—</div></div>
+      <div class="stat"><div class="lbl">tokens used</div><div class="val" id="hs-tok">—</div></div>
+    </div>
+
+    <div class="row">
+      <div class="panel">
+        <div class="phead">
+          <span class="ptitle">agent performance</span>
+          <span class="ptitle" id="agents-window">window</span>
+        </div>
+        <table class="atable">
+          <thead>
+            <tr><th>agent</th><th class="num">runs</th><th class="num">avg latency</th><th class="num">errors</th></tr>
+          </thead>
+          <tbody id="agent-table"></tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <div class="phead"><span class="ptitle">signals worth investigating</span></div>
+        <div class="signals" id="signals"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="phead">
+        <span class="ptitle">recent runs</span>
+        <span class="ptitle">click to open</span>
+      </div>
+      <div class="runs" id="runs-list"></div>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-run">
+  <section class="view view-run">
+    <div class="crumb"><a href="#/history">history</a> / runs / <span id="rd-id">—</span></div>
+
+    <div class="hero">
+      <div class="herorow">
+        <div>
+          <div class="rd-runid" id="rd-runid">—</div>
+          <div class="rd-input" id="rd-input">—</div>
+        </div>
+        <span class="rd-status" id="rd-status">—</span>
+      </div>
+      <div class="badges" id="rd-badges"></div>
+    </div>
+
+    <div class="panel">
+      <div class="phead">
+        <span class="ptitle">timeline · agent swimlanes</span>
+        <span class="ptitle">click a block to jump</span>
+      </div>
+      <div class="swim" id="swim"></div>
+    </div>
+
+    <div class="panel">
+      <div class="phead">
+        <span class="ptitle">reasoning trace</span>
+        <span class="ptitle" id="rd-stepcount">—</span>
+      </div>
+      <div class="rd-steps" id="rd-steps"></div>
+    </div>
+  </section>
+</template>
+
+<script src="/dashboard/static/dashboard.js"></script>
+</body>
+</html>
