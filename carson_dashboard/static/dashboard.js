@@ -4,23 +4,23 @@
 const AGENTS = ["router", "Brandson", "Jenkins", "Spinnaker", "Inspector", "Confluence", "Jira"];
 
 const AGENT_META = {
-  router:     { role: "cdao sdk",        x: 260, y: 180, r: 26 },
-  Brandson:   { role: "git agent",       x: 110, y: 90,  r: 18 },
-  Jenkins:    { role: "build agent",     x: 260, y: 60,  r: 18 },
-  Spinnaker:  { role: "deploy agent",    x: 410, y: 90,  r: 18 },
-  Inspector:  { role: "terraform agent", x: 410, y: 270, r: 18 },
-  Confluence: { role: "docs agent",      x: 260, y: 300, r: 18 },
-  Jira:       { role: "tickets agent",   x: 110, y: 270, r: 18 },
+  router:     { role: "cdao sdk",   x: 270, y: 190, r: 32 },
+  Brandson:   { role: "git",        x: 80,  y: 65,  r: 22 },
+  Jenkins:    { role: "build",      x: 270, y: 45,  r: 22 },
+  Spinnaker:  { role: "deploy",     x: 460, y: 65,  r: 22 },
+  Inspector:  { role: "terraform",  x: 460, y: 315, r: 22 },
+  Confluence: { role: "docs",       x: 270, y: 335, r: 22 },
+  Jira:       { role: "tickets",    x: 80,  y: 315, r: 22 },
 };
 
 const AGENT_COLOR = {
-  router:     "#888780",
-  Brandson:   "#9b8ae0",
-  Jenkins:    "#6aa8e3",
-  Spinnaker:  "#888780",
-  Inspector:  "#d99a4a",
-  Confluence: "#9b8ae0",
-  Jira:       "#6ec18e",
+  router:     "#7c9cff",
+  Brandson:   "#a78bfa",
+  Jenkins:    "#7c9cff",
+  Spinnaker:  "#86d8b9",
+  Inspector:  "#fbbf24",
+  Confluence: "#c69bff",
+  Jira:       "#74d9a2",
 };
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -186,73 +186,135 @@ function drawGraph() {
   clearEl(svg);
   const ns = "http://www.w3.org/2000/svg";
 
-  // edges first
+  // <defs> — radial gradient + per-agent dot fills
+  const defs = document.createElementNS(ns, "defs");
+  defs.innerHTML =
+    '<radialGradient id="router-glow" cx="50%" cy="50%" r="50%">' +
+      '<stop offset="0%" stop-color="' + AGENT_COLOR.router + '" stop-opacity=".45"/>' +
+      '<stop offset="100%" stop-color="' + AGENT_COLOR.router + '" stop-opacity="0"/>' +
+    '</radialGradient>';
+  svg.appendChild(defs);
+
+  // edges (smooth bezier arcs router → agent)
   const router = AGENT_META.router;
-  AGENTS.filter(a => a !== "router").forEach(a => {
+  AGENTS.filter(function (a) { return a !== "router"; }).forEach(function (a) {
     const m = AGENT_META[a];
-    const line = document.createElementNS(ns, "line");
-    line.setAttribute("x1", router.x);
-    line.setAttribute("y1", router.y);
-    line.setAttribute("x2", m.x);
-    line.setAttribute("y2", m.y);
-    const cls = state.activeEdges.has(`router-${a}`) ? "gedge active" : "gedge";
-    line.setAttribute("class", cls);
-    svg.appendChild(line);
+    const dx = (m.x - router.x) * 0.4;
+    const dy = (m.y - router.y) * 0.4;
+    const cp1x = router.x + dx, cp1y = router.y;
+    const cp2x = m.x - dx,      cp2y = m.y - dy * 0.3;
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d",
+      "M" + router.x + "," + router.y +
+      " C" + cp1x + "," + cp1y + " " + cp2x + "," + cp2y + " " + m.x + "," + m.y);
+    const isActive = state.activeEdges.has("router-" + a);
+    path.setAttribute("class", isActive ? "gedge active" : "gedge");
+    svg.appendChild(path);
   });
 
+  // router halo (always-on subtle pulse)
+  const halo = document.createElementNS(ns, "circle");
+  halo.setAttribute("cx", router.x);
+  halo.setAttribute("cy", router.y);
+  halo.setAttribute("r", 56);
+  halo.setAttribute("fill", "url(#router-glow)");
+  svg.appendChild(halo);
+
+  const ring = document.createElementNS(ns, "circle");
+  ring.setAttribute("cx", router.x);
+  ring.setAttribute("cy", router.y);
+  ring.setAttribute("r", router.r);
+  ring.setAttribute("fill", "none");
+  ring.setAttribute("stroke", AGENT_COLOR.router);
+  ring.setAttribute("stroke-width", "1");
+  ring.setAttribute("opacity", "0.5");
+  const ra = document.createElementNS(ns, "animate");
+  ra.setAttribute("attributeName", "r");
+  ra.setAttribute("from", router.r);
+  ra.setAttribute("to", router.r + 18);
+  ra.setAttribute("dur", "2.4s");
+  ra.setAttribute("repeatCount", "indefinite");
+  const rb = document.createElementNS(ns, "animate");
+  rb.setAttribute("attributeName", "opacity");
+  rb.setAttribute("from", "0.5");
+  rb.setAttribute("to", "0");
+  rb.setAttribute("dur", "2.4s");
+  rb.setAttribute("repeatCount", "indefinite");
+  ring.appendChild(ra); ring.appendChild(rb);
+  svg.appendChild(ring);
+
   // nodes
-  AGENTS.forEach(a => {
+  AGENTS.forEach(function (a) {
     const m = AGENT_META[a];
     const st = state.agentStatus[a];
+    const color = AGENT_COLOR[a] || "#888";
     const g = document.createElementNS(ns, "g");
 
-    // pulse ring while thinking
-    if (st.status === "thinking") {
+    // pulse ring while thinking (above the always-on router halo)
+    if (st.status === "thinking" && a !== "router") {
       const pulse = document.createElementNS(ns, "circle");
       pulse.setAttribute("cx", m.x);
       pulse.setAttribute("cy", m.y);
-      pulse.setAttribute("r", m.r + 4);
-      pulse.setAttribute("class", "gnode-pulse");
-      pulse.setAttribute("opacity", "0.55");
-      const anim = document.createElementNS(ns, "animate");
-      anim.setAttribute("attributeName", "r");
-      anim.setAttribute("from", m.r);
-      anim.setAttribute("to", m.r + 14);
-      anim.setAttribute("dur", "1.6s");
-      anim.setAttribute("repeatCount", "indefinite");
-      const anim2 = document.createElementNS(ns, "animate");
-      anim2.setAttribute("attributeName", "opacity");
-      anim2.setAttribute("from", "0.55");
-      anim2.setAttribute("to", "0");
-      anim2.setAttribute("dur", "1.6s");
-      anim2.setAttribute("repeatCount", "indefinite");
-      pulse.appendChild(anim);
-      pulse.appendChild(anim2);
+      pulse.setAttribute("r", m.r + 2);
+      pulse.setAttribute("fill", "none");
+      pulse.setAttribute("stroke", color);
+      pulse.setAttribute("stroke-width", "1.2");
+      pulse.setAttribute("opacity", "0.6");
+      const a1 = document.createElementNS(ns, "animate");
+      a1.setAttribute("attributeName", "r");
+      a1.setAttribute("from", m.r);
+      a1.setAttribute("to", m.r + 14);
+      a1.setAttribute("dur", "1.6s");
+      a1.setAttribute("repeatCount", "indefinite");
+      const a2 = document.createElementNS(ns, "animate");
+      a2.setAttribute("attributeName", "opacity");
+      a2.setAttribute("from", "0.6");
+      a2.setAttribute("to", "0");
+      a2.setAttribute("dur", "1.6s");
+      a2.setAttribute("repeatCount", "indefinite");
+      pulse.appendChild(a1); pulse.appendChild(a2);
       g.appendChild(pulse);
     }
 
+    // node body — colored background tint + colored stroke
     const c = document.createElementNS(ns, "circle");
     c.setAttribute("cx", m.x);
     c.setAttribute("cy", m.y);
     c.setAttribute("r", m.r);
-    c.setAttribute("class", "gnode-circle " + (st.status !== "idle" ? st.status : ""));
+    c.setAttribute("fill", hexToRgba(color, st.status === "idle" ? 0.10 : 0.22));
+    c.setAttribute("stroke", color);
+    c.setAttribute("stroke-width", st.status === "idle" ? "0.8" : "1.4");
+    c.setAttribute("opacity", st.status === "idle" ? "0.85" : "1");
     g.appendChild(c);
 
+    // inner status dot
+    if (st.status !== "idle" && a !== "router") {
+      const dot = document.createElementNS(ns, "circle");
+      dot.setAttribute("cx", m.x);
+      dot.setAttribute("cy", m.y);
+      dot.setAttribute("r", "3");
+      dot.setAttribute("fill", color);
+      g.appendChild(dot);
+    }
+
+    // labels
     if (a === "router") {
       const t1 = document.createElementNS(ns, "text");
-      t1.setAttribute("x", m.x); t1.setAttribute("y", m.y - 2);
+      t1.setAttribute("x", m.x); t1.setAttribute("y", m.y - 1);
       t1.setAttribute("text-anchor", "middle");
-      t1.setAttribute("class", "gnode-label");
+      t1.setAttribute("class", "router-label");
       t1.textContent = "router";
       const t2 = document.createElementNS(ns, "text");
-      t2.setAttribute("x", m.x); t2.setAttribute("y", m.y + 11);
+      t2.setAttribute("x", m.x); t2.setAttribute("y", m.y + 13);
       t2.setAttribute("text-anchor", "middle");
-      t2.setAttribute("class", "gnode-sub");
+      t2.setAttribute("class", "router-sub");
       t2.textContent = m.role;
       g.appendChild(t1); g.appendChild(t2);
     } else {
-      const labelY = m.y < 180 ? m.y - 30 : m.y + 32;
-      const subY   = m.y < 180 ? m.y - 18 : m.y + 44;
+      // labels above for top-row nodes, below for bottom-row
+      const above = m.y < router.y;
+      const labelY = above ? m.y - m.r - 14 : m.y + m.r + 18;
+      const subY   = above ? m.y - m.r - 2  : m.y + m.r + 30;
       const t1 = document.createElementNS(ns, "text");
       t1.setAttribute("x", m.x); t1.setAttribute("y", labelY);
       t1.setAttribute("text-anchor", "middle");
@@ -261,13 +323,21 @@ function drawGraph() {
       const t2 = document.createElementNS(ns, "text");
       t2.setAttribute("x", m.x); t2.setAttribute("y", subY);
       t2.setAttribute("text-anchor", "middle");
-      t2.setAttribute("class", "gnode-sub");
-      t2.textContent = m.role + " · " + st.status;
+      t2.setAttribute("class", "gnode-sub" + (st.status !== "idle" ? " " + st.status : ""));
+      t2.textContent = m.role;
       g.appendChild(t1); g.appendChild(t2);
     }
 
     svg.appendChild(g);
   });
+}
+
+function hexToRgba(hex, a) {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return "rgba(" + r + "," + g + "," + b + "," + a + ")";
 }
 
 function drawLog() {
