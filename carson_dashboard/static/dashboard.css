@@ -192,22 +192,24 @@ main {
 .row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 @media (max-width: 920px) { .row-3 { grid-template-columns: 1fr; } }
 
-/* KPI cards w/ sparklines */
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-@media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
-.kpi {
+/* KPI cards w/ sparklines  (alias .stats/.stat/.lbl/.val for live/history) */
+.kpis, .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 760px) {
+  .kpis, .stats { grid-template-columns: repeat(2, 1fr); }
+}
+.kpi, .stat {
   background: var(--bg-1);
   border: 1px solid var(--bd-0);
   border-radius: var(--r-md);
   padding: 12px 14px;
 }
-.kpi-lbl {
+.kpi-lbl, .lbl {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--tx-2);
   letter-spacing: 0.5px;
 }
-.kpi-val {
+.kpi-val, .val {
   font-family: var(--font-mono);
   font-size: 22px;
   font-weight: 500;
@@ -217,7 +219,7 @@ main {
   align-items: baseline;
   gap: 4px;
 }
-.kpi-val small {
+.kpi-val small, .val small {
   font-size: 11px;
   color: var(--tx-2);
   font-weight: 400;
