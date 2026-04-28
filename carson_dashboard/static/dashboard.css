@@ -275,7 +275,7 @@ main {
 .gnode-sub.error { fill: var(--ac-red); }
 
 .gedge {
-  stroke: rgba(255,255,255,0.10);
+  stroke: rgba(255,255,255,0.16);
   stroke-width: 1;
   fill: none;
 }

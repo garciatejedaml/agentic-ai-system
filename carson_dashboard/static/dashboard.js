@@ -4,13 +4,13 @@
 const AGENTS = ["router", "Brandson", "Jenkins", "Spinnaker", "Inspector", "Confluence", "Jira"];
 
 const AGENT_META = {
-  router:     { role: "cdao sdk",   x: 270, y: 190, r: 32 },
-  Brandson:   { role: "git",        x: 80,  y: 65,  r: 22 },
-  Jenkins:    { role: "build",      x: 270, y: 45,  r: 22 },
-  Spinnaker:  { role: "deploy",     x: 460, y: 65,  r: 22 },
-  Inspector:  { role: "terraform",  x: 460, y: 315, r: 22 },
-  Confluence: { role: "docs",       x: 270, y: 335, r: 22 },
-  Jira:       { role: "tickets",    x: 80,  y: 315, r: 22 },
+  router:     { role: "cdao sdk",   x: 270, y: 200, r: 32 },
+  Brandson:   { role: "git",        x: 90,  y: 95,  r: 22 },
+  Jenkins:    { role: "build",      x: 270, y: 75,  r: 22 },
+  Spinnaker:  { role: "deploy",     x: 450, y: 95,  r: 22 },
+  Inspector:  { role: "terraform",  x: 450, y: 305, r: 22 },
+  Confluence: { role: "docs",       x: 270, y: 325, r: 22 },
+  Jira:       { role: "tickets",    x: 90,  y: 305, r: 22 },
 };
 
 const AGENT_COLOR = {
@@ -313,8 +313,8 @@ function drawGraph() {
     } else {
       // labels above for top-row nodes, below for bottom-row
       const above = m.y < router.y;
-      const labelY = above ? m.y - m.r - 14 : m.y + m.r + 18;
-      const subY   = above ? m.y - m.r - 2  : m.y + m.r + 30;
+      const labelY = above ? m.y - m.r - 26 : m.y + m.r + 22;
+      const subY   = above ? m.y - m.r - 12 : m.y + m.r + 36;
       const t1 = document.createElementNS(ns, "text");
       t1.setAttribute("x", m.x); t1.setAttribute("y", labelY);
       t1.setAttribute("text-anchor", "middle");
