@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
-from . import db, ops_db, webhooks
+from . import autonomous, db, ops_db, webhooks
 from .stream import bus, serialize
 
 router = APIRouter()
@@ -135,6 +135,53 @@ async def api_hitl_request(payload: dict = Body(...)) -> JSONResponse:
     summary = payload.get("summary") or "approval needed"
     webhooks.request_hitl(job_id, summary)
     return JSONResponse({"ok": True, "job_id": job_id})
+
+
+# ── Autonomous jobs + Athena knowledge agents ──────────────────────────────
+
+
+@router.get("/api/autonomous/jobs")
+async def api_autonomous_jobs(limit: int = 30) -> JSONResponse:
+    return JSONResponse(autonomous.list_jobs(limit=limit))
+
+
+@router.get("/api/autonomous/jobs/{job_id}")
+async def api_autonomous_job_detail(job_id: str) -> JSONResponse:
+    job = autonomous.get_job(job_id)
+    if not job:
+        raise HTTPException(404, f"job {job_id} not found")
+    return JSONResponse(job)
+
+
+@router.post("/api/autonomous/jobs/{job_id}/{action}")
+async def api_autonomous_job_action(job_id: str, action: str,
+                                    payload: dict = Body(default={})) -> JSONResponse:
+    """approve | reject | cancel | hold | resume → state transition + SSE"""
+    valid = {"approve", "reject", "cancel", "hold", "resume", "approve_prod"}
+    if action not in valid:
+        raise HTTPException(400, f"unknown action {action}")
+    job = autonomous.get_job(job_id)
+    if not job:
+        raise HTTPException(404, f"job {job_id} not found")
+    state_map = {
+        "approve":      ("running", "approved · resuming"),
+        "approve_prod": ("deploying", "approved · deploying to prod"),
+        "reject":       ("failed", "rejected by reviewer"),
+        "cancel":       ("cancelled", "cancelled"),
+        "hold":         ("held", "held by operator"),
+        "resume":       ("running", "resumed"),
+    }
+    new_state, label = state_map[action]
+    autonomous.update_job_state(job_id, new_state, label)
+    bus.publish({"type": "autonomous.state",
+                 "job_id": job_id, "state": new_state, "label": label,
+                 "actor": payload.get("actor")})
+    return JSONResponse({"job_id": job_id, "state": new_state, "label": label})
+
+
+@router.get("/api/autonomous/agents")
+async def api_knowledge_agents() -> JSONResponse:
+    return JSONResponse(autonomous.list_knowledge_agents())
 
 
 # ── SSE ────────────────────────────────────────────────────────────────────

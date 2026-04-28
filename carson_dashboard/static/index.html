@@ -16,6 +16,7 @@
   </div>
   <nav class="tabs">
     <a href="#/" data-tab="live">live</a>
+    <a href="#/autonomous" data-tab="autonomous">autonomous</a>
     <a href="#/ops" data-tab="ops">ops</a>
     <a href="#/history" data-tab="history">history</a>
   </nav>
@@ -212,7 +213,37 @@
   </section>
 </template>
 
+<template id="tpl-autonomous">
+  <section class="view view-autonomous">
+    <div class="ahead">
+      <div class="ahead-l">
+        <span class="ahead-title">autonomous coding jobs</span>
+        <span class="ahead-meta" id="autonomous-active-count">— active</span>
+      </div>
+      <div class="ahead-r">
+        <span class="status-pill" id="autonomous-summary-pill">
+          <span class="dot dot-running"></span><span id="autonomous-summary-text">loading…</span>
+        </span>
+        <span class="ahead-longest" id="autonomous-longest">longest active: —</span>
+      </div>
+    </div>
+    <div class="auto-jobs" id="auto-jobs"></div>
+
+    <div class="ahead">
+      <div class="ahead-l">
+        <span class="ahead-title">athena platform · knowledge agents</span>
+      </div>
+      <div class="ahead-r">
+        <span class="ahead-meta" id="autonomous-agents-count">— agents</span>
+        <span class="ahead-meta">auto-refresh enabled</span>
+      </div>
+    </div>
+    <div class="auto-agents" id="auto-agents"></div>
+  </section>
+</template>
+
 <script src="/dashboard/static/dashboard.js"></script>
 <script src="/dashboard/static/ops.js"></script>
+<script src="/dashboard/static/autonomous.js"></script>
 </body>
 </html>

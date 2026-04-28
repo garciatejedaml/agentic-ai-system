@@ -13,16 +13,18 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
-from . import db, ops_db, simulator
+from . import autonomous, db, ops_db, simulator
 from .routes import router, mount_static
 
 
 def create_app(seed: bool = True, simulate: bool = True) -> FastAPI:
     db.init_db()
     ops_db.init_ops_db()
+    autonomous.init_autonomous_db()
     if seed:
         simulator.seed_history()
         simulator.seed_ops_history()
+        autonomous.seed_demo_state()
 
     app = FastAPI(title="Carson dashboard")
     app.include_router(router)
