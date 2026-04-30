@@ -215,30 +215,63 @@
 
 <template id="tpl-autonomous">
   <section class="view view-autonomous">
-    <div class="ahead">
-      <div class="ahead-l">
-        <span class="ahead-title">autonomous coding jobs</span>
-        <span class="ahead-meta" id="autonomous-active-count">— active</span>
-      </div>
-      <div class="ahead-r">
-        <span class="status-pill" id="autonomous-summary-pill">
-          <span class="dot dot-running"></span><span id="autonomous-summary-text">loading…</span>
-        </span>
-        <span class="ahead-longest" id="autonomous-longest">longest active: —</span>
-      </div>
-    </div>
-    <div class="auto-jobs" id="auto-jobs"></div>
+    <div class="auto-grid">
+      <div class="auto-main">
+        <div class="ahead">
+          <div class="ahead-l">
+            <span class="ahead-title">autonomous coding jobs</span>
+            <span class="ahead-meta" id="autonomous-active-count">— active</span>
+          </div>
+          <div class="ahead-r">
+            <span class="status-pill" id="autonomous-summary-pill">
+              <span class="dot dot-running"></span><span id="autonomous-summary-text">loading…</span>
+            </span>
+            <span class="ahead-longest" id="autonomous-longest">longest active: —</span>
+          </div>
+        </div>
+        <div class="auto-jobs" id="auto-jobs"></div>
 
-    <div class="ahead">
-      <div class="ahead-l">
-        <span class="ahead-title">athena platform · knowledge agents</span>
+        <div class="ahead">
+          <div class="ahead-l">
+            <span class="ahead-title">athena platform · knowledge agents</span>
+          </div>
+          <div class="ahead-r">
+            <span class="ahead-meta" id="autonomous-agents-count">— agents</span>
+            <span class="ahead-meta">auto-refresh enabled</span>
+          </div>
+        </div>
+        <div class="auto-agents" id="auto-agents"></div>
       </div>
-      <div class="ahead-r">
-        <span class="ahead-meta" id="autonomous-agents-count">— agents</span>
-        <span class="ahead-meta">auto-refresh enabled</span>
-      </div>
+
+      <aside class="auto-chat">
+        <div class="chat-head">
+          <div class="chat-title">
+            <span class="chat-dot"></span>
+            ask carson
+          </div>
+          <div class="chat-meta">
+            <span class="chat-meta-pill">router · haiku 4.5</span>
+          </div>
+        </div>
+        <div class="chat-sub">
+          chat directly with langgraph · the router decides which agent answers
+        </div>
+        <div class="chat-roster" id="chat-roster"></div>
+        <div class="chat-msgs" id="chat-msgs" aria-live="polite"></div>
+        <div class="chat-typing" id="chat-typing" hidden>
+          <span class="typing-avatar" id="typing-avatar"></span>
+          <span class="typing-text"><span id="typing-name">aquiles</span> is thinking</span>
+          <span class="typing-dots"><i></i><i></i><i></i></span>
+        </div>
+        <form class="chat-compose" id="chat-compose">
+          <textarea id="chat-input" rows="1" placeholder="ask anything — router classifies and routes" autocomplete="off"></textarea>
+          <button type="submit" class="chat-send" aria-label="send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </form>
+        <div class="chat-foot">enter sends · shift+enter newline</div>
+      </aside>
     </div>
-    <div class="auto-agents" id="auto-agents"></div>
   </section>
 </template>
 

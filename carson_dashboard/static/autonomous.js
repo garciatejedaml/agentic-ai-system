@@ -475,4 +475,382 @@
     if (ph.duration_s == null) return "—";
     return fmtDuration(ph.duration_s);
   }
+
+  // ────────────────────────────────────────────────────────────────────────
+  //  Chat panel — design-only mockup (router classification + multi-agent)
+  //  When real LangGraph integration lands, swap fakeRoute() and
+  //  fakeReply() for /api/chat or SSE streaming. The DOM contract stays.
+  // ────────────────────────────────────────────────────────────────────────
+
+  const AGENTS = {
+    router:    { color: "#7c9cff", initials: "Rt", role: "haiku 4.5" },
+    aquiles:   { color: "#7c9cff", initials: "aq", role: "coder · code agent" },
+    sdlc:      { color: "#c69bff", initials: "sd", role: "coder · ci/release" },
+    bob:       { color: "#74d9a2", initials: "bb", role: "athena · borrowing" },
+    hydra:     { color: "#5cd0c4", initials: "hy", role: "athena · decision" },
+    pixie:     { color: "#ff8fb3", initials: "px", role: "athena · pricing" },
+    studio:    { color: "#ffb059", initials: "st", role: "athena · ml studio" },
+    csb:       { color: "#9aa0b3", initials: "cs", role: "athena · syndicate" },
+    Brandson:  { color: "#a78bfa", initials: "Br", role: "git agent" },
+    Jenkins:   { color: "#7c9cff", initials: "Je", role: "build agent" },
+    Spinnaker: { color: "#74d9a2", initials: "Sp", role: "deploy agent" },
+  };
+
+  const chat = { msgs: [], seeded: false, lastAgent: "aquiles" };
+
+  function ensureChatBoot() {
+    if (chat.seeded) {
+      bindCompose();
+      renderChat();
+      renderRoster();
+      return;
+    }
+    seedDemo();
+    chat.seeded = true;
+    bindCompose();
+    renderChat();
+    renderRoster();
+  }
+
+  function seedDemo() {
+    const now = Date.now() / 1000;
+    chat.msgs = [
+      sysMsg("channel opened · router online · 3 coder agents · 7 athena agents", now - 30 * 60),
+      userMsgData("martin", "Refactor the jira webhook handler · pull the retry logic into its own module.", now - 28 * 60),
+      routerMsg("classified · coder track → aquiles · confidence 0.94", now - 28 * 60 + 2),
+      agentMsgData("aquiles",
+        "On it. I'll work in 9 phases — clone → analyze → generate → test → commit → pr → review → build → deploy. I'll ping you when I need a human in the loop.",
+        now - 28 * 60 + 6),
+      progressMsgData("aquiles", "analyze", 1, "found 3 retry points · pulling into retry_handler.py", now - 27 * 60),
+      progressMsgData("aquiles", "test", 3, "89 / 89 tests pass · 5 files modified", now - 25 * 60),
+      progressMsgData("aquiles", "pr", 5, "opened PR #4421 · auto-review green", now - 23 * 60),
+      hitlMsgData("aquiles", "J-2417",
+        "PR #4421 is ready for human review. 89/89 tests · no lint · no breaking changes. Merge now or hold for your review?",
+        [
+          { label: "merge now", kind: "primary", action: "approve" },
+          { label: "I'll review first", kind: "ghost", action: "hold" },
+          { label: "view PR", kind: "ghost", action: "view" },
+        ],
+        now - 22 * 60),
+      userMsgData("martin", "I'll review first.", now - 21 * 60),
+      agentMsgData("aquiles", "👍 holding. Ping me with `@aquiles resume` when you're done.", now - 21 * 60 + 3),
+      agentMsgData("bob",
+        "Heads up — BOB hasn't refreshed in 12m. The schema bump on `credit-decision` may already have stale embeddings. Want me to kick off a sync? ~5 min.",
+        now - 8 * 60,
+        [
+          { label: "refresh now", kind: "primary", action: "refresh" },
+          { label: "wait until prod hours", kind: "ghost", action: "dismiss" },
+        ]),
+    ];
+  }
+
+  function sysMsg(text, ts)             { return { type: "system", text: text, ts: ts }; }
+  function routerMsg(text, ts)          { return { type: "router", text: text, ts: ts }; }
+  function userMsgData(name, text, ts)  { return { type: "user", name: name, text: text, ts: ts }; }
+  function agentMsgData(agent, text, ts, actions) {
+    return { type: "agent", agent: agent, text: text, ts: ts, actions: actions };
+  }
+  function progressMsgData(agent, phase, idx, text, ts) {
+    return { type: "progress", agent: agent, phase: phase, phase_idx: idx, text: text, ts: ts };
+  }
+  function hitlMsgData(agent, job_id, text, actions, ts) {
+    return { type: "hitl", agent: agent, job_id: job_id, text: text, actions: actions, ts: ts };
+  }
+
+  function renderRoster() {
+    const root = document.getElementById("chat-roster");
+    if (!root) return;
+    root.innerHTML = "";
+    const present = ["router", "aquiles", "sdlc", "bob", "hydra"];
+    present.forEach(function (name) {
+      const a = AGENTS[name];
+      if (!a) return;
+      const node = document.createElement("span");
+      node.className = "roster-pip";
+      node.title = name + " · " + a.role;
+      node.style.background = a.color + "26"; // ~15% alpha
+      node.style.color = a.color;
+      node.style.borderColor = a.color + "55";
+      node.textContent = a.initials;
+      root.appendChild(node);
+    });
+    const more = document.createElement("span");
+    more.className = "roster-more";
+    more.textContent = "+ 5 more · all online";
+    root.appendChild(more);
+  }
+
+  function renderChat() {
+    const root = document.getElementById("chat-msgs");
+    if (!root) return;
+    root.innerHTML = "";
+    chat.msgs.forEach(function (m, i) {
+      const node = messageEl(m);
+      node.style.animationDelay = Math.min(i, 8) * 30 + "ms";
+      root.appendChild(node);
+    });
+    root.scrollTop = root.scrollHeight;
+  }
+
+  function messageEl(m) {
+    if (m.type === "system") return systemEl(m);
+    if (m.type === "router") return routerEl(m);
+    if (m.type === "user")   return userEl(m);
+    if (m.type === "progress") return progressEl(m);
+    if (m.type === "hitl")   return hitlEl(m);
+    return agentEl(m);
+  }
+
+  function systemEl(m) {
+    const el = document.createElement("div");
+    el.className = "msg msg-sys";
+    el.textContent = m.text;
+    return el;
+  }
+  function routerEl(m) {
+    const el = document.createElement("div");
+    el.className = "msg msg-router";
+    el.innerHTML =
+      '<span class="msg-router-pip">router</span>' +
+      '<span class="msg-router-text">' + esc(m.text) + "</span>";
+    return el;
+  }
+  function userEl(m) {
+    const el = document.createElement("div");
+    el.className = "msg msg-user";
+    el.innerHTML =
+      '<div class="msg-user-bubble">' + esc(m.text) + "</div>" +
+      '<div class="msg-user-meta">' + esc(m.name || "you") + " · " + esc(relAgo(m.ts)) + "</div>";
+    return el;
+  }
+  function agentEl(m) {
+    const a = AGENTS[m.agent] || { color: "#7c9cff", initials: m.agent.slice(0, 2), role: "" };
+    const el = document.createElement("div");
+    el.className = "msg msg-agent";
+    let actions = "";
+    if (m.actions && m.actions.length) {
+      actions = '<div class="msg-actions">' + m.actions.map(function (b) {
+        return '<button class="auto-btn auto-btn-' + (b.kind || "ghost") +
+          '" data-action="' + esc(b.action) + '">' + esc(b.label) + "</button>";
+      }).join("") + "</div>";
+    }
+    el.innerHTML =
+      '<div class="msg-avatar" style="background:' + a.color + '22;color:' + a.color +
+      ';border-color:' + a.color + '55;">' + esc(a.initials) + "</div>" +
+      '<div class="msg-body">' +
+        '<div class="msg-head"><span class="msg-name" style="color:' + a.color + ';">' +
+          esc(m.agent) + '</span><span class="msg-role">' + esc(a.role) +
+          '</span><span class="msg-time">' + esc(relAgo(m.ts)) + "</span></div>" +
+        '<div class="msg-bubble">' + esc(m.text) + "</div>" +
+        actions +
+      "</div>";
+    return el;
+  }
+  function progressEl(m) {
+    const a = AGENTS[m.agent] || { color: "#7c9cff", initials: m.agent.slice(0, 2) };
+    const el = document.createElement("div");
+    el.className = "msg msg-progress";
+    el.innerHTML =
+      '<div class="msg-avatar" style="background:' + a.color + '22;color:' + a.color +
+      ';border-color:' + a.color + '55;">' + esc(a.initials) + "</div>" +
+      '<div class="msg-progress-card" style="border-color:' + a.color + '40;">' +
+        '<div class="msg-progress-head"><span class="msg-progress-name" style="color:' + a.color + ';">' +
+          esc(m.agent) + '</span> <span class="msg-progress-phase">phase ' + (m.phase_idx + 1) +
+          ' / 9 · ' + esc(m.phase) + "</span></div>" +
+        '<div class="msg-progress-text">' + esc(m.text) + "</div>" +
+        '<div class="msg-progress-bar"><div class="msg-progress-fill" style="width:' +
+          (((m.phase_idx + 1) / 9) * 100).toFixed(0) + '%;background:linear-gradient(90deg,' +
+          a.color + ',' + a.color + ');"></div></div>' +
+      "</div>";
+    return el;
+  }
+  function hitlEl(m) {
+    const a = AGENTS[m.agent] || { color: "#ffb059", initials: m.agent.slice(0, 2) };
+    const el = document.createElement("div");
+    el.className = "msg msg-hitl";
+    const actions = (m.actions || []).map(function (b) {
+      return '<button class="auto-btn auto-btn-' + (b.kind || "ghost") +
+        '" data-action="' + esc(b.action) + '" data-job="' + esc(m.job_id || "") + '">' +
+        esc(b.label) + "</button>";
+    }).join("");
+    el.innerHTML =
+      '<div class="msg-avatar" style="background:' + a.color + '22;color:' + a.color +
+      ';border-color:' + a.color + '55;">' + esc(a.initials) + "</div>" +
+      '<div class="msg-hitl-card">' +
+        '<div class="msg-hitl-tag">human-in-the-loop · ' + esc(m.job_id || "") + "</div>" +
+        '<div class="msg-head"><span class="msg-name" style="color:' + a.color + ';">' +
+          esc(m.agent) + '</span><span class="msg-role">' + esc(a.role || "") +
+          '</span><span class="msg-time">' + esc(relAgo(m.ts)) + "</span></div>" +
+        '<div class="msg-bubble">' + esc(m.text) + "</div>" +
+        '<div class="msg-actions">' + actions + "</div>" +
+      "</div>";
+    return el;
+  }
+
+  function bindCompose() {
+    const form = document.getElementById("chat-compose");
+    const input = document.getElementById("chat-input");
+    if (!form || !input || form.dataset.bound) return;
+    form.dataset.bound = "1";
+
+    // Auto-resize textarea
+    input.addEventListener("input", function () {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 140) + "px";
+    });
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      input.style.height = "auto";
+      sendUserMessage(text);
+    });
+
+    // Action buttons inside the chat
+    document.getElementById("chat-msgs").addEventListener("click", function (e) {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      onChatAction(btn.dataset.action, btn.dataset.job, btn.textContent);
+    });
+  }
+
+  function onChatAction(action, jobId, label) {
+    const ts = Date.now() / 1000;
+    chat.msgs.push(userMsgData("martin", label, ts));
+    if (action === "approve" || action === "approve_prod" || action === "hold" ||
+        action === "reject" || action === "cancel" || action === "resume") {
+      // Optimistic state update for the demo
+      if (jobId) {
+        const stateMap = {
+          approve: ["running", "approved · resuming"],
+          approve_prod: ["deploying", "approved · deploying to prod"],
+          reject: ["failed", "rejected by reviewer"],
+          cancel: ["cancelled", "cancelled"],
+          hold: ["held", "held by operator"],
+          resume: ["running", "resumed"],
+        };
+        const m = stateMap[action];
+        const j = auton.jobs.find(function (x) { return x.job_id === jobId; });
+        if (j && m) { j.state = m[0]; j.state_label = m[1]; renderJobs(); renderHeader(); }
+      }
+      const ack = action === "hold"
+        ? "👍 holding. I'll wait."
+        : action === "approve" || action === "approve_prod"
+          ? "🚀 approved · executing."
+          : action === "resume"
+            ? "▶️ resuming."
+            : "stopped.";
+      simulateReply(jobId ? findAgentForJob(jobId) : "aquiles", ack, 600);
+    } else if (action === "refresh") {
+      simulateReply("bob", "starting sync now · expected 5 min · I'll let you know when fresh.", 700);
+    } else if (action === "dismiss") {
+      simulateReply("bob", "noted · I'll wait until prod hours.", 500);
+    } else if (action === "view") {
+      simulateReply(jobId ? findAgentForJob(jobId) : "aquiles", "PR is at github.com/jpmc/credittech/pull/4421 · I'll wait.", 600);
+    }
+    renderChat();
+  }
+
+  function findAgentForJob(jobId) {
+    if (jobId === "J-2418") return "aquiles";
+    if (jobId === "J-2417") return "aquiles";
+    if (jobId === "J-2416") return "sdlc";
+    if (jobId === "J-2415") return "aquiles";
+    return "aquiles";
+  }
+
+  function sendUserMessage(text) {
+    const ts = Date.now() / 1000;
+    chat.msgs.push(userMsgData("martin", text, ts));
+    renderChat();
+    // fake-classify locally for the demo
+    const route = fakeClassify(text);
+    setTimeout(function () {
+      chat.msgs.push(routerMsg(
+        "classified · " + route.track + " track → " + route.agent + " · confidence " + route.conf.toFixed(2),
+        Date.now() / 1000));
+      renderChat();
+      simulateReply(route.agent, fakeReply(text, route.agent), 1100);
+    }, 500);
+  }
+
+  function simulateReply(agent, text, delay) {
+    showTyping(agent);
+    setTimeout(function () {
+      hideTyping();
+      chat.msgs.push(agentMsgData(agent, text, Date.now() / 1000));
+      chat.lastAgent = agent;
+      renderChat();
+    }, delay || 900);
+  }
+
+  function showTyping(agent) {
+    const a = AGENTS[agent] || AGENTS.aquiles;
+    const node = document.getElementById("chat-typing");
+    const av = document.getElementById("typing-avatar");
+    const nm = document.getElementById("typing-name");
+    if (!node) return;
+    if (av) {
+      av.textContent = a.initials;
+      av.style.background = a.color + "22";
+      av.style.color = a.color;
+      av.style.borderColor = a.color + "55";
+    }
+    if (nm) nm.textContent = agent;
+    node.hidden = false;
+  }
+  function hideTyping() {
+    const node = document.getElementById("chat-typing");
+    if (node) node.hidden = true;
+  }
+
+  // Tiny on-device classifier for the demo — same intent as the
+  // server-side haiku/heuristic classifier, just enough to feel real.
+  function fakeClassify(text) {
+    const t = text.toLowerCase();
+    const has = function (kws) { return kws.some(function (k) { return t.indexOf(k) >= 0; }); };
+    if (has(["bob", "borrowing"]))                  return { track: "athena", agent: "bob",     conf: 0.92 };
+    if (has(["hydra", "decision"]))                  return { track: "athena", agent: "hydra",   conf: 0.91 };
+    if (has(["pixie", "pricing"]))                   return { track: "athena", agent: "pixie",   conf: 0.90 };
+    if (has(["studio", "feature store"]))            return { track: "athena", agent: "studio",  conf: 0.88 };
+    if (has(["reindex", "re-sync", "embed", "vector"])) return { track: "athena", agent: "bob", conf: 0.84 };
+    if (has(["terraform", "tf-", "vpc", "iam"]))      return { track: "coder",  agent: "sdlc",    conf: 0.93 };
+    if (has(["deploy", "release", "build"]))          return { track: "coder",  agent: "sdlc",    conf: 0.86 };
+    if (has(["fix", "bug", "endpoint", "api", "service", "svc", "patch", "refactor", "test"]))
+      return { track: "coder", agent: "aquiles", conf: 0.94 };
+    return { track: "coder", agent: "aquiles", conf: 0.71 };
+  }
+
+  function fakeReply(text, agent) {
+    const t = text.toLowerCase();
+    if (agent === "aquiles") {
+      if (t.indexOf("test") >= 0)  return "I'll write the missing test cases next pass and rerun the suite. Ping you when green.";
+      if (t.indexOf("refactor") >= 0) return "Got it — kicking off a fresh job. I'll work in 9 phases and HITL you at the PR step.";
+      if (t.indexOf("fix") >= 0)   return "Reproducing locally first, then I'll patch and open a PR. Stand by.";
+      return "On it. I'll create a job and post progress here as I move through the phases.";
+    }
+    if (agent === "sdlc") {
+      if (t.indexOf("terraform") >= 0) return "Reading the existing module versions from the lockfile. I'll bump in a branch and run `terraform plan` before opening a PR.";
+      return "Picking this up. I'll keep it scoped to the build/release path and ping you before any prod step.";
+    }
+    if (agent === "bob")     return "Looking up the affected collection now. Will report back in a few seconds.";
+    if (agent === "hydra")   return "I'll re-sync the decision engine schema and let you know when fresh.";
+    if (agent === "pixie")   return "On it — refreshing pricing tier vectors.";
+    return "On it — I'll post back here.";
+  }
+
+  // Wire chat boot into the autonomous view bootstrap. We intercept
+  // the original showAutonomous() defined above to also render the chat.
+  const _origShow = window.showAutonomous;
+  window.showAutonomous = function () {
+    _origShow();
+    setTimeout(ensureChatBoot, 50); // after template clone
+  };
 })();
