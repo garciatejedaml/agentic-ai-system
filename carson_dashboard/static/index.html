@@ -17,7 +17,13 @@
   <nav class="tabs">
     <a href="#/" data-tab="live">live</a>
     <a href="#/autonomous" data-tab="autonomous">autonomous</a>
+    <a href="#/chats" data-tab="chats">chats</a>
+    <a href="#/pm" data-tab="pm">pm</a>
     <a href="#/ops" data-tab="ops">ops</a>
+    <a href="#/cost" data-tab="cost">cost</a>
+    <a href="#/replay" data-tab="replay">replay</a>
+    <a href="#/autonomy" data-tab="autonomy">autonomy</a>
+    <a href="#/audit" data-tab="audit">audit</a>
     <a href="#/history" data-tab="history">history</a>
   </nav>
   <div class="topright">
@@ -275,8 +281,268 @@
   </section>
 </template>
 
+<template id="tpl-cost">
+  <section class="view view-cost">
+    <div class="ahead">
+      <div><span class="ahead-t">carson · cost &amp; impact</span><span class="ahead-m">· last 90 days</span></div>
+      <span class="ahead-m" id="c-window">window: q4 → now</span>
+    </div>
+    <div class="kpis">
+      <div class="k">
+        <div class="k-l">prs shipped autonomously</div>
+        <div class="k-v" id="c-prs">—</div>
+        <div class="k-d" id="c-prs-d">—</div>
+      </div>
+      <div class="k">
+        <div class="k-l">eng-hours equivalent saved</div>
+        <div class="k-v" id="c-hours">—</div>
+        <div class="k-d" id="c-hours-d">—</div>
+      </div>
+      <div class="k">
+        <div class="k-l">prod bugs caught pre-deploy</div>
+        <div class="k-v" id="c-bugs">—</div>
+        <div class="k-d" id="c-bugs-d">—</div>
+      </div>
+      <div class="k">
+        <div class="k-l">hitl approvals · &lt; 4 min</div>
+        <div class="k-v" id="c-hitl">—</div>
+        <div class="k-d" id="c-hitl-d">—</div>
+      </div>
+    </div>
+
+    <div class="cost-row">
+      <div class="card">
+        <div class="bar-lb"><span>time-to-PR · with vs without</span><span style="color:#5b6072">median, hours</span></div>
+        <div class="bar-rail cmp">
+          <div class="bar-r2"><span class="lbl">w/ carson</span><div class="rail"><div class="fl with" id="cmp-tt-with-fl"><span id="cmp-tt-with-v">—</span></div></div><span style="font-family:var(--font-mono);font-size:10.5px;color:#74d9a2;width:40px;text-align:right" id="cmp-tt-with-d">—</span></div>
+          <div class="bar-r2"><span class="lbl">manual</span><div class="rail"><div class="fl without" style="width:100%"><span id="cmp-tt-without-v">—</span></div></div><span style="font-family:var(--font-mono);font-size:10.5px;color:#8b91a3;width:40px;text-align:right">baseline</span></div>
+        </div>
+        <div style="margin-top:18px"></div>
+        <div class="bar-lb"><span>cost per pr</span><span style="color:#5b6072">tokens + infra, USD</span></div>
+        <div class="bar-rail cmp">
+          <div class="bar-r2"><span class="lbl">w/ carson</span><div class="rail"><div class="fl with" id="cmp-cp-with-fl"><span id="cmp-cp-with-v">—</span></div></div><span style="font-family:var(--font-mono);font-size:10.5px;color:#74d9a2;width:40px;text-align:right" id="cmp-cp-with-d">—</span></div>
+          <div class="bar-r2"><span class="lbl">manual</span><div class="rail"><div class="fl without" style="width:100%"><span id="cmp-cp-without-v">—</span></div></div><span style="font-family:var(--font-mono);font-size:10.5px;color:#8b91a3;width:40px;text-align:right">baseline</span></div>
+        </div>
+        <div style="margin-top:18px"></div>
+        <div class="bar-lb"><span>autonomous % over time</span><span style="color:#5b6072">last 12 weeks</span></div>
+        <svg class="spark" id="c-trend-svg" viewBox="0 0 600 60" preserveAspectRatio="none"></svg>
+      </div>
+
+      <div class="card">
+        <div class="bar-lb" style="margin-bottom:8px"><span>top contributors · this month</span><span style="color:#5b6072">prs merged</span></div>
+        <div class="lb" id="c-leaderboard"></div>
+      </div>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-replay">
+  <section class="view view-replay">
+    <div class="rp-h">
+      <div class="rp-l">
+        <span class="rp-id" id="rp-id">—</span>
+        <span class="rp-ti" id="rp-title">—</span>
+      </div>
+      <div class="rp-r">
+        <div class="rp-pl">
+          <button class="rp-btn" data-act="first" type="button">⏮</button>
+          <button class="rp-btn" data-act="back"  type="button">⏪</button>
+          <button class="rp-btn"  data-act="play" type="button">⏵</button>
+          <button class="rp-btn" data-act="fwd"   type="button">⏩</button>
+          <button class="rp-btn" data-act="last"  type="button">⏭</button>
+        </div>
+        <span class="rp-sp" id="rp-speed">1.5×</span>
+      </div>
+    </div>
+    <div class="rp-meta" id="rp-meta" style="margin-bottom:10px">—</div>
+
+    <div class="rp-row" style="margin-bottom:10px">
+      <div>
+        <div class="scrubber" id="rp-scrubber">
+          <div class="scr-rail">
+            <div class="scr-tk" id="rp-track" style="width:0"></div>
+            <div id="rp-events"></div>
+            <div class="scr-tm" id="rp-tm">+0s</div>
+          </div>
+        </div>
+        <div class="scr-axis"><span>00:00</span><span id="rp-axis-end">—</span></div>
+
+        <div class="bar-lb" style="margin:14px 0 8px"><span>agent swimlanes · synced to playhead</span><span style="color:#5b6072">vertical line is current frame</span></div>
+        <div class="swim-list" id="rp-swims" style="position:relative"></div>
+
+        <div class="tool-pop" id="rp-tool"></div>
+      </div>
+
+      <div>
+        <div class="bar-lb" style="margin-bottom:8px"><span>recent runs</span><span style="color:#5b6072">click to load</span></div>
+        <div class="rp-runs" id="rp-runs"></div>
+
+        <div class="bar-lb" style="margin:14px 0 8px"><span>reasoning stream · time-locked</span><span style="color:#5b6072">±15s window</span></div>
+        <div class="frame-stream" id="rp-stream"></div>
+      </div>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-autonomy">
+  <section class="view view-autonomy">
+    <div class="ahead">
+      <div><span class="ahead-t">carson · autonomy snapshot</span><span class="ahead-m">· honest read on where carson is good</span></div>
+    </div>
+    <div class="au-row">
+      <div class="card au-c">
+        <svg class="au-svg" id="au-gauge-svg" viewBox="0 0 280 180" width="280" height="180"></svg>
+        <div class="au-pct" id="au-gauge-pct">—</div>
+        <div class="au-d" id="au-gauge-delta">—</div>
+        <div class="au-l" id="au-gauge-label">—</div>
+      </div>
+      <div class="card au-c">
+        <svg class="au-svg" id="au-radar-svg" viewBox="0 0 280 220" width="280" height="220"></svg>
+        <div class="au-l">strongest at <b style="color:#7c9cff">debug</b> &amp; <b style="color:#7c9cff">refactor</b> · still ramping on <b style="color:#ffb059">infra</b> &amp; <b style="color:#ffb059">ml</b></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="bar-lb" style="margin-bottom:10px"><span>skill detail · last 30 days</span><span style="color:#5b6072">success rate · job count</span></div>
+      <div class="skills-rows" id="au-skill-rows"></div>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-audit">
+  <section class="view view-audit">
+    <div class="ahead">
+      <div><span class="ahead-t">compliance · audit trail</span><span class="ahead-m">· every agent action, who approved, what data</span></div>
+      <span class="s-tag" style="background:rgba(255,124,124,.10);color:#ff7c7c;border:1px solid rgba(255,124,124,.25);font-size:10px;padding:2px 8px;border-radius:999px;font-family:var(--font-mono)">CISO ready</span>
+    </div>
+
+    <div class="au-stats">
+      <div class="au-s"><div class="au-s-l">approvals · this period</div><div class="au-s-v" id="au-stat-approvals">—</div></div>
+      <div class="au-s"><div class="au-s-l">avg time to approve</div><div class="au-s-v" id="au-stat-time">—</div></div>
+      <div class="au-s"><div class="au-s-l">data classifications touched</div><div class="au-s-v" id="au-stat-data">—</div></div>
+      <div class="au-s"><div class="au-s-l">pending reviews</div><div class="au-s-v" id="au-stat-pending">—</div></div>
+    </div>
+
+    <div class="au-filters" id="au-filters">
+      <span class="au-f on" data-type="all">all <span class="cnt" style="color:#5b6072;margin-left:4px">—</span></span>
+      <span class="au-f" data-type="deploy">deploys <span class="cnt" style="color:#5b6072;margin-left:4px">—</span></span>
+      <span class="au-f" data-type="approval">approvals <span class="cnt" style="color:#5b6072;margin-left:4px">—</span></span>
+      <span class="au-f" data-type="data_access">data access <span class="cnt" style="color:#5b6072;margin-left:4px">—</span></span>
+      <span class="au-f" data-type="rollback">rollbacks <span class="cnt" style="color:#5b6072;margin-left:4px">—</span></span>
+      <span class="au-f" data-type="hitl_approve">hitl approvals <span class="cnt" style="color:#5b6072;margin-left:4px">—</span></span>
+      <span class="au-f" data-type="index_sync">index sync <span class="cnt" style="color:#5b6072;margin-left:4px">—</span></span>
+      <span class="au-f-sep"></span>
+      <span class="au-f" data-since="24">last 24h</span>
+      <span class="au-f" data-since="168">last 7d</span>
+      <span class="au-f on" data-since="720">last 30d</span>
+      <button class="au-exp" id="au-export" type="button">export pdf</button>
+      <span id="au-export-tip" style="font-size:10px;color:#5b6072;font-family:var(--font-mono);margin-left:6px"></span>
+    </div>
+
+    <div class="card" style="padding:0;overflow-x:auto">
+      <table class="au-tbl">
+        <thead>
+          <tr><th style="padding-left:16px">timestamp</th><th>actor</th><th>event</th><th>resource</th><th>approved by</th><th style="padding-right:16px">trace</th></tr>
+        </thead>
+        <tbody id="au-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-chats">
+  <section class="view view-chats">
+    <div class="ch-grid">
+      <aside class="ch-rail">
+        <div class="ch-rail-h">
+          <span class="ch-rail-tt">chats</span>
+          <span class="ch-rail-cn" id="ch-count">—</span>
+        </div>
+        <button class="ch-new" id="ch-new" type="button">+ new conversation</button>
+        <div class="ch-sessions" id="ch-sessions"></div>
+      </aside>
+
+      <section class="ch-active">
+        <div class="ch-active-h">
+          <div>
+            <div class="ch-active-tt" id="ch-active-title">—</div>
+            <div class="ch-active-mt" id="ch-active-meta">—</div>
+          </div>
+          <span class="ch-active-fpill" id="ch-active-focus">—</span>
+        </div>
+        <div class="chat-msgs" id="ch-active-msgs"></div>
+        <form class="chat-compose" id="ch-compose">
+          <textarea id="ch-input" rows="1" placeholder="type your message — enter to send" autocomplete="off"></textarea>
+          <button type="submit" class="chat-send" aria-label="send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </form>
+      </section>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-pm">
+  <section class="view view-pm">
+    <div class="pm-toolbar">
+      <div class="pm-toolbar-l">
+        <span class="ahead-t">project manager</span>
+        <div class="pm-projects" id="pm-project"></div>
+      </div>
+      <div class="pm-toolbar-r">
+        <button class="auto-btn auto-btn-ghost" type="button">+ new epic</button>
+        <button class="auto-btn auto-btn-primary" type="button">draft from chat</button>
+      </div>
+    </div>
+
+    <div class="pm-grid">
+      <aside class="pm-rail">
+        <div class="pm-rail-h"><span>epics</span><span style="font-size:10px;color:#5b6072" id="pm-epic-count"></span></div>
+        <div class="pm-epics" id="pm-epics"></div>
+        <div class="pm-rail-h" style="margin-top:18px"><span>confluence pages</span><span style="font-size:10px;color:#5b6072">recent</span></div>
+        <div class="pm-conf" id="pm-conf"></div>
+      </aside>
+
+      <section class="pm-board">
+        <div class="pm-board-h">
+          <span class="pm-board-tt">deliverables · kanban</span>
+          <span style="font-size:10.5px;color:#5b6072;font-family:var(--font-mono)">click an epic to focus</span>
+        </div>
+        <div class="pm-kanban" id="pm-kanban"></div>
+      </section>
+
+      <aside class="pm-chat" id="pm-chat">
+        <div class="ch-h">
+          <div class="ch-t"><span class="ch-d"></span>pm assistant</div>
+          <span class="ch-pl">router · pm focus</span>
+        </div>
+        <div class="ch-s">drafts go through review before commit · no auto-creation</div>
+        <div class="chat-msgs" id="pm-chat-msgs"></div>
+        <div class="qr">
+          <span class="qr-pill" data-text="draft an epic for ">draft an epic</span>
+          <span class="qr-pill" data-text="summarise q3 progress">summarise progress</span>
+          <span class="qr-pill" data-text="who is blocked?">who is blocked?</span>
+          <span class="qr-pill" data-text="draft post-mortem for ">draft post-mortem</span>
+          <span class="qr-pill" data-text="create confluence adr for ">create adr</span>
+        </div>
+        <form class="chat-compose" id="pm-chat-form">
+          <textarea id="pm-chat-input" rows="1" placeholder="ask the pm agent — e.g. 'draft an epic for HNSW migration'"></textarea>
+          <button type="submit" class="chat-send" aria-label="send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </form>
+      </aside>
+    </div>
+  </section>
+</template>
+
 <script src="/dashboard/static/dashboard.js"></script>
 <script src="/dashboard/static/ops.js"></script>
 <script src="/dashboard/static/autonomous.js"></script>
+<script src="/dashboard/static/cost.js"></script>
+<script src="/dashboard/static/replay.js"></script>
+<script src="/dashboard/static/autonomy.js"></script>
+<script src="/dashboard/static/audit.js"></script>
+<script src="/dashboard/static/chats.js"></script>
+<script src="/dashboard/static/pm.js"></script>
 </body>
 </html>

@@ -683,7 +683,16 @@ function route() {
   const hash = location.hash || "#/";
   if (hash === "#/" || hash === "") return showLive();
   if (hash === "#/autonomous" && typeof window.showAutonomous === "function") return window.showAutonomous();
+  if (hash === "#/chats" && typeof window.showChats === "function") return window.showChats();
+  if (hash === "#/pm" && typeof window.showPM === "function") return window.showPM();
   if (hash === "#/ops" && typeof window.showOps === "function") return window.showOps();
+  if (hash === "#/cost" && typeof window.showCost === "function") return window.showCost();
+  if (hash.startsWith("#/replay") && typeof window.showReplay === "function") {
+    const parts = hash.split("/");
+    return window.showReplay(parts[2]);
+  }
+  if (hash === "#/autonomy" && typeof window.showAutonomyMeter === "function") return window.showAutonomyMeter();
+  if (hash === "#/audit" && typeof window.showAudit === "function") return window.showAudit();
   if (hash === "#/history") return showHistory();
   if (hash.startsWith("#/run/")) return showRun(hash.slice(6));
   showLive();

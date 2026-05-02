@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
-from . import autonomous, db, ops_db, webhooks
+from . import audit, autonomous, chats, db, metrics, ops_db, pm, replay, webhooks
 from .stream import bus, serialize
 
 router = APIRouter()
@@ -182,6 +182,226 @@ async def api_autonomous_job_action(job_id: str, action: str,
 @router.get("/api/autonomous/agents")
 async def api_knowledge_agents() -> JSONResponse:
     return JSONResponse(autonomous.list_knowledge_agents())
+
+
+# ── Cost / impact ──────────────────────────────────────────────────────────
+
+
+@router.get("/api/cost/summary")
+async def api_cost_summary(window_days: float = 90.0) -> JSONResponse:
+    return JSONResponse(metrics.cost_summary(window_days=window_days))
+
+
+@router.get("/api/cost/comparison")
+async def api_cost_comparison() -> JSONResponse:
+    return JSONResponse(metrics.comparison())
+
+
+@router.get("/api/cost/autonomy-trend")
+async def api_autonomy_trend(weeks: int = 12) -> JSONResponse:
+    return JSONResponse(metrics.autonomy_trend(weeks=weeks))
+
+
+@router.get("/api/cost/leaderboard")
+async def api_leaderboard(limit: int = 10) -> JSONResponse:
+    return JSONResponse(metrics.leaderboard(limit=limit))
+
+
+# ── Autonomy view ──────────────────────────────────────────────────────────
+
+
+@router.get("/api/autonomy/summary")
+async def api_autonomy_summary() -> JSONResponse:
+    return JSONResponse(metrics.autonomy_summary())
+
+
+@router.get("/api/autonomy/skills")
+async def api_skills() -> JSONResponse:
+    return JSONResponse(metrics.skills())
+
+
+# ── Replay / time-travel ───────────────────────────────────────────────────
+
+
+@router.get("/api/replay/recent")
+async def api_replay_recent(limit: int = 20) -> JSONResponse:
+    return JSONResponse(replay.list_recent_runs(limit=limit))
+
+
+@router.get("/api/replay/{run_id}/timeline")
+async def api_replay_timeline(run_id: str) -> JSONResponse:
+    tl = replay.get_timeline(run_id)
+    if not tl:
+        raise HTTPException(404, f"run {run_id} not found")
+    return JSONResponse(tl)
+
+
+# ── Audit / compliance ─────────────────────────────────────────────────────
+
+
+@router.get("/api/audit/log")
+async def api_audit_log(
+    limit: int = 100,
+    since_hours: float | None = None,
+    types: str | None = None,
+    actor: str | None = None,
+) -> JSONResponse:
+    since = (time.time() - since_hours * 3600) if since_hours else None
+    type_list = types.split(",") if types else None
+    return JSONResponse(audit.list_audit(
+        limit=limit, since=since, event_types=type_list, actor=actor
+    ))
+
+
+@router.get("/api/audit/stats")
+async def api_audit_stats(window_days: float = 7.0) -> JSONResponse:
+    return JSONResponse(audit.audit_stats(window_days=window_days))
+
+
+@router.post("/api/audit/export")
+async def api_audit_export(payload: dict = Body(default={})) -> JSONResponse:
+    since_hours = payload.get("since_hours", 30 * 24)
+    since = time.time() - since_hours * 3600
+    return JSONResponse(audit.export_summary(since=since))
+
+
+# ── Multi-session chat ─────────────────────────────────────────────────────
+
+
+@router.get("/api/chats")
+async def api_chats_list() -> JSONResponse:
+    return JSONResponse(chats.list_sessions())
+
+
+@router.post("/api/chats")
+async def api_chats_create(payload: dict = Body(...)) -> JSONResponse:
+    title = payload.get("title") or "untitled"
+    focus = payload.get("agent_focus", "general")
+    owner = payload.get("owner")
+    s = chats.create_session(title, agent_focus=focus, owner=owner)
+    bus.publish({"type": "chat.session_created", "session_id": s["id"]})
+    return JSONResponse(s)
+
+
+@router.get("/api/chats/{session_id}")
+async def api_chats_session(session_id: str) -> JSONResponse:
+    s = chats.get_session(session_id)
+    if not s:
+        raise HTTPException(404, "session not found")
+    return JSONResponse(s)
+
+
+@router.get("/api/chats/{session_id}/messages")
+async def api_chats_messages(session_id: str, limit: int = 200) -> JSONResponse:
+    chats.mark_read(session_id)
+    return JSONResponse(chats.list_messages(session_id, limit=limit))
+
+
+@router.post("/api/chats/{session_id}/messages")
+async def api_chats_send(session_id: str, payload: dict = Body(...)) -> JSONResponse:
+    """Append a user message; mock router classifies + replies.
+    Real Carson replaces the body with a langgraph dispatch."""
+    text = payload.get("text", "")
+    name = payload.get("name", "you")
+    msg_id = chats.append_message(session_id, {
+        "type": "user", "name": name, "text": text,
+    })
+    bus.publish({"type": "chat.user_message", "session_id": session_id,
+                 "id": msg_id, "name": name, "text": text})
+    return JSONResponse({"ok": True, "id": msg_id})
+
+
+@router.post("/api/chats/{session_id}/pin")
+async def api_chats_pin(session_id: str, payload: dict = Body(default={})) -> JSONResponse:
+    chats.pin_session(session_id, bool(payload.get("pinned", True)))
+    return JSONResponse({"ok": True})
+
+
+@router.delete("/api/chats/{session_id}")
+async def api_chats_archive(session_id: str) -> JSONResponse:
+    chats.archive_session(session_id)
+    return JSONResponse({"ok": True})
+
+
+# ── Project Manager ────────────────────────────────────────────────────────
+
+
+@router.get("/api/pm/projects")
+async def api_pm_projects() -> JSONResponse:
+    return JSONResponse(pm.list_projects())
+
+
+@router.post("/api/pm/projects")
+async def api_pm_create_project(payload: dict = Body(...)) -> JSONResponse:
+    return JSONResponse(pm.create_project(
+        name=payload["name"],
+        code=payload.get("code"),
+        quarter=payload.get("quarter"),
+    ))
+
+
+@router.get("/api/pm/epics")
+async def api_pm_epics(project_id: str | None = None,
+                       state: str | None = None) -> JSONResponse:
+    return JSONResponse(pm.list_epics(project_id=project_id, state=state))
+
+
+@router.post("/api/pm/epics")
+async def api_pm_create_epic(payload: dict = Body(...)) -> JSONResponse:
+    return JSONResponse(pm.create_epic(
+        project_id=payload["project_id"],
+        title=payload["title"],
+        summary=payload.get("summary"),
+        owner=payload.get("owner"),
+        target_date=payload.get("target_date"),
+        jira_key=payload.get("jira_key"),
+    ))
+
+
+@router.get("/api/pm/deliverables")
+async def api_pm_deliverables(epic_id: str | None = None) -> JSONResponse:
+    return JSONResponse(pm.list_deliverables(epic_id=epic_id))
+
+
+@router.post("/api/pm/deliverables")
+async def api_pm_create_deliverable(payload: dict = Body(...)) -> JSONResponse:
+    return JSONResponse(pm.create_deliverable(
+        epic_id=payload["epic_id"],
+        title=payload["title"],
+        owner=payload.get("owner"),
+        points=payload.get("points"),
+        jira_key=payload.get("jira_key"),
+    ))
+
+
+@router.get("/api/pm/confluence")
+async def api_pm_confluence(space: str | None = None,
+                             project_id: str | None = None) -> JSONResponse:
+    return JSONResponse(pm.list_confluence(space=space, project_id=project_id))
+
+
+@router.post("/api/pm/draft/epic")
+async def api_pm_draft_epic(payload: dict = Body(...)) -> JSONResponse:
+    return JSONResponse(pm.draft_epic(
+        description=payload["description"],
+        project_id=payload.get("project_id"),
+    ))
+
+
+@router.post("/api/pm/draft/jira")
+async def api_pm_draft_jira(payload: dict = Body(...)) -> JSONResponse:
+    return JSONResponse(pm.draft_jira(
+        description=payload["description"],
+        parent_epic=payload.get("parent_epic"),
+    ))
+
+
+@router.post("/api/pm/draft/confluence")
+async def api_pm_draft_confluence(payload: dict = Body(...)) -> JSONResponse:
+    return JSONResponse(pm.draft_confluence(
+        description=payload["description"],
+        space=payload.get("space", "GENERAL"),
+    ))
 
 
 # ── SSE ────────────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ import time
 import uuid
 from typing import Iterable
 
-from . import db, instrumentation as inst, ops_db, webhooks
+from . import audit, chats, db, instrumentation as inst, ops_db, webhooks
 
 AGENTS = [
     ("router",      "cdao sdk"),
@@ -383,3 +383,96 @@ async def ops_live_loop(interval: float = 5.0) -> None:
         except Exception:
             pass
         await asyncio.sleep(random.uniform(interval * 0.6, interval * 1.4))
+
+
+# ─── Audit log seed ─────────────────────────────────────────────────────
+
+AUDIT_FIXTURES = [
+    ("aquiles",   "deploy",       "credit-tech-api → prod-1",                "martin@jpmc"),
+    ("sdlc",      "approval",     "PR #4421 · credit-tech",                  "m.koch@jpmc"),
+    ("bob",       "index_sync",   "athena.bob.borrowing · 1024 chunks",      None),
+    ("sdlc",      "hitl_approve", "J-2415 prod deploy",                      "martin@jpmc"),
+    ("aquiles",   "approval",     "PR #4419 · credit-models",                "auto · branch policy"),
+    ("spinnaker", "rollback",     "athena-pixie · prod",                     "auto · slo breach"),
+    ("jenkins",   "build",        "payments-svc · #4521",                    None),
+    ("aquiles",   "data_access",  "athena.bob · read-only · scope credit-decision", "policy P-4F2"),
+    ("hydra",     "index_sync",   "athena.hydra.decision · 612 chunks",      None),
+    ("inspector", "config_change", "tf-aws-eks → v19",                        "sami@jpmc"),
+    ("brandson",  "approval",     "PR #4392 · risk-engine",                  "alex@jpmc"),
+    ("aquiles",   "deploy",       "payments-svc → staging",                  "auto · canary"),
+    ("athena-dev", "index_sync",  "athena.studio.featurestore · 12 chunks",  None),
+    ("sdlc",      "config_change", "carson_data/project_profiles updated",   "martin@jpmc"),
+    ("csb",       "index_sync",   "athena.csb · partial sync 234/890",       None),
+]
+
+
+def seed_audit_history(num: int = 240, span_days: float = 30.0) -> None:
+    audit.init_audit_db()
+    if audit.list_audit(limit=1):
+        return
+    now = time.time()
+    for i in range(num):
+        actor, ev, res, approved = random.choice(AUDIT_FIXTURES)
+        ts = now - random.uniform(60, span_days * 86400)
+        audit.insert_audit({
+            "ts": ts,
+            "actor": actor,
+            "event_type": ev,
+            "resource": res,
+            "approved_by": approved,
+            "metadata": {
+                "run_id": f"run_{uuid.uuid4().hex[:7]}",
+                "agent": actor,
+            },
+        })
+
+
+# ─── Chat sessions seed ──────────────────────────────────────────────────
+
+CHAT_SEED = [
+    ("Athena ops",                "athena",     "Refresh BOB after credit-decision schema bump"),
+    ("Webhook refactor — J-2417", "coder",      "PR #4421 ready for review"),
+    ("Q4 deliverables planning",  "pm",         "Drafting epic for HNSW migration"),
+    ("Compliance · weekly digest", "compliance", "8 deploys · 0 sensitive data accesses"),
+    ("Build failure triage",       "ops",        "credit-models #2599 failed — diagnosing"),
+    ("General · ask anything",     "general",    "How do I trigger a manual sync?"),
+]
+
+
+def seed_chat_sessions() -> None:
+    chats.init_chat_db()
+    if chats.list_sessions():
+        return
+    now = time.time()
+    for i, (title, focus, preview) in enumerate(CHAT_SEED):
+        s = chats.create_session(title, agent_focus=focus, owner="martin@jpmc")
+        # Seed a couple of messages per session so the preview is filled
+        chats.append_message(s["id"], {
+            "type": "system",
+            "text": f"channel opened · focus: {focus} · all relevant agents online",
+            "ts": now - (3600 * (len(CHAT_SEED) - i)) - 60,
+        })
+        chats.append_message(s["id"], {
+            "type": "user",
+            "name": "martin",
+            "text": preview,
+            "ts": now - (3600 * (len(CHAT_SEED) - i)),
+        })
+        # First session gets a richer thread (matches the autonomous demo)
+        if i == 0:
+            chats.append_message(s["id"], {
+                "type": "router",
+                "text": f"classified · athena track → bob · confidence 0.92",
+                "ts": now - (3600 * (len(CHAT_SEED) - i)) + 1,
+            })
+            chats.append_message(s["id"], {
+                "type": "agent",
+                "agent": "bob",
+                "text": "On it. The schema bump renamed three fields — I'll re-embed only the affected chunks (~190) instead of the full 1,024. ETA 5 min.",
+                "ts": now - (3600 * (len(CHAT_SEED) - i)) + 4,
+            })
+        # Mark first 2 sessions as having unread; pin the first
+        if i == 0:
+            chats.pin_session(s["id"], True)
+        if i < 2:
+            chats.update_session(s["id"], unread=2)
