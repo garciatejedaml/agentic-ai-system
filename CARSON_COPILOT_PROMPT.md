@@ -1,5 +1,76 @@
 # Carson Copilot · paste-ready prompts
 
+> **Quick index**
+> - **Audit prompt** — paste this when you want Copilot to run the
+>   self-audit autonomously (read-only, produces findings docs).
+>   Section "Self-audit · paste verbatim" below.
+> - **Single bridge wireup** — to wire one of the 6 behaviour bridges.
+> - **Full sequence wireup** — to wire all 6 bridges in order with
+>   approval between each.
+> - **Recovery / rollback** — if a bridge breaks something.
+
+---
+
+## Self-audit · paste verbatim
+
+Use this **first**. Run the audit before any fix work. The audit
+produces `audit_outputs/*.md` in the repo. **No fixes are applied
+during the audit phase.**
+
+```
+@carson-fixer apply CARSON-SELF-AUDIT
+
+Master spec: CARSON_AUDIT_PLAYBOOK.md at the repo root.
+Read end-to-end before doing anything. Note the §-numbered phases —
+you will execute them in order, 0 through 12.
+
+Output: a folder `audit_outputs/` at the repo root with one MD per
+phase plus 00_executive_summary.md and 99_fix_manifest.md.
+
+Templates: `audit_templates/` has fillable stubs. Copy them in:
+
+    cp -r audit_templates audit_outputs
+
+Then fill each in order, executing the phase's procedure.
+
+Reply with:
+  1. SHA + branch you're auditing (from §0 pre-flight)
+  2. The 12-line plan: one line per phase saying what you'll inspect
+I will confirm before you proceed.
+
+Apply only after I confirm. After each phase, commit:
+  git add audit_outputs/
+  git commit -m "audit: phase N · <area> · <findings_count> findings"
+
+When all phases are done, push to a NEW branch (do NOT push to main):
+  git checkout -b audit/repo-<YYYY-MM-DD>
+  git push origin audit/repo-<YYYY-MM-DD>
+
+Then file a single chat message to Martin:
+  > Self-audit complete. Branch audit/repo-<YYYY-MM-DD>. Findings:
+  > X P0, Y P1, Z P2, W P3. See audit_outputs/00_executive_summary.md
+  > and audit_outputs/99_fix_manifest.md.
+
+Hard global constraints (§14 of playbook):
+  - READ-ONLY phase. No fixes applied. Any urge to "just fix this"
+    must be suppressed and recorded in the finding card instead.
+  - Do not paste actual secret values into findings — redact with
+    <redacted-NN-chars> placeholders.
+  - If a phase's procedure errors out, record the error in the
+    phase's MD with a "Phase incomplete" banner and continue with
+    the next phase.
+  - One commit per phase (so reverts are surgical).
+
+Failure protocol:
+  - If your audit finds something so urgent it should be fixed
+    immediately rather than logged, STOP, file an urgent issue
+    titled "[carson-audit-urgent] <one-line>", and continue. Do
+    not apply the fix yourself during the audit.
+```
+
+---
+
+
 Open this file in VS Code on the VDI, copy the relevant block,
 paste into Copilot Chat. The single source of truth Copilot will
 follow is `CARSON_INSTRUCTION.md` at the repo root.
