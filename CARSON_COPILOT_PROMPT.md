@@ -11,6 +11,100 @@
 
 ---
 
+## Dashboard internal merge · paste verbatim
+
+Use this when Claude's new dashboard is staged inside
+`carson_dashboard/newDashboard/` and you want Copilot to merge it
+into the main `carson_dashboard/` while preserving your existing
+Copilot-only files.
+
+```
+@carson-fixer apply DASHBOARD-INTERNAL-MERGE
+
+Context: I have two versions of carson_dashboard inside the same repo:
+  - C:\repos\high-touch-agent-prompts\carson_dashboard
+    (your current version with signals.py, bridge.py,
+    athena_developer_bob_job.py, custom chat input, etc.)
+  - C:\repos\high-touch-agent-prompts\carson_dashboard\newDashboard
+    (Claude's version with 6 new views, premium chat panel, polish
+    animations, keyboard shortcuts, onboarding tour — synced from
+    branch claude/carson-audit-2026-04-27 commit 7c2cbcc)
+
+Goal: merge the new dashboard's improvements into my main dashboard,
+preserving all my unique work.
+
+Reply with a 5-line plan and a per-file conflict resolution table
+BEFORE applying. I will confirm.
+
+Resolution rules — apply strictly:
+
+  Files in newDashboard/ that DON'T exist at carson_dashboard/ root
+    → COPY them up. Expected new files:
+      - carson_dashboard/cost.js, replay.js, autonomy.js, audit.js,
+        chats.js, pm.js (frontend views)
+      - carson_dashboard/static/cost.js, replay.js, autonomy.js,
+        audit.js, chats.js, pm.js (frontend per-view modules)
+      - carson_dashboard/audit.py, chats.py, metrics.py, pm.py,
+        replay.py (backend modules)
+
+  Files at carson_dashboard/ root that DON'T exist in newDashboard/
+    → KEEP as-is. (signals.py, bridge.py, athena_developer_bob_job.py,
+    plus any other Copilot-only files.)
+
+  Files in BOTH that diverge:
+    static/index.html, static/dashboard.js, static/dashboard.css,
+    static/autonomous.js, static/ops.js
+      → Use newDashboard's verbatim (the 10-tab nav, templates,
+        CSS sections 1-18, keyboard shortcuts, animations, and
+        onboarding tour are interlinked and must be kept whole).
+    routes.py → UNION of endpoints. Keep all my routes AND add new
+      ones from newDashboard. Expected new endpoints:
+      - /api/cost/summary, /api/cost/comparison,
+        /api/cost/leaderboard, /api/cost/autonomy-trend
+      - /api/autonomy/summary, /api/autonomy/skills
+      - /api/replay/recent, /api/replay/{run_id}/timeline
+      - /api/audit/log, /api/audit/stats, /api/audit/export
+      - /api/chats (GET/POST), /api/chats/{id}, /api/chats/{id}/messages,
+        /api/chats/{id}/pin, /api/chats/{id} (DELETE)
+      - /api/pm/projects (GET/POST), /api/pm/epics (GET/POST),
+        /api/pm/deliverables (GET/POST), /api/pm/confluence,
+        /api/pm/draft/epic, /api/pm/draft/jira, /api/pm/draft/confluence
+    simulator.py → UNION of seed functions. Expected new seeds:
+      - seed_audit_history(), seed_chat_sessions()
+    __main__.py → UNION of init calls and seed calls. Expected adds:
+      - audit.init_audit_db(), chats.init_chat_db(), pm.init_pm_db()
+      - simulator.seed_audit_history(), simulator.seed_chat_sessions()
+      - pm.seed_demo()
+    Any other .py → UNION of functions. If two functions have the
+      same name with different bodies, STOP and ask me.
+
+After applying:
+  - Delete the carson_dashboard/newDashboard/ folder (it was a
+    staging area; the merge consumes it).
+  - Clean __pycache__: rm -rf carson_dashboard/__pycache__
+  - Verify the server boots: python -m carson_dashboard
+  - Verify all 10 tabs render at http://127.0.0.1:8765/dashboard:
+    live · autonomous · chats · pm · ops · cost · replay · autonomy
+    · audit · history
+  - Take a screenshot showing the 10 tabs and attach to the PR.
+  - Open ONE PR titled "merge(dashboard): adopt new views from
+    claude branch" targeting feature/CREDITTECH-241864-agentic-ai-mcp-servers.
+
+Constraints:
+  - Do NOT modify any file outside carson_dashboard/.
+  - Do NOT introduce new pip dependencies (the new modules use
+    only stdlib + the existing FastAPI/sse-starlette/uvicorn).
+  - Do NOT delete signals.py, bridge.py, athena_developer_bob_job.py,
+    or any other file you added. Those are mine.
+  - Stop and ask me if any non-trivial code conflict appears.
+  - One PR. No bundling with other work.
+
+If your 5-line plan deviates from these rules, I will say "no" and
+ask you to re-plan.
+```
+
+---
+
 ## Self-audit · paste verbatim
 
 Use this **first**. Run the audit before any fix work. The audit
