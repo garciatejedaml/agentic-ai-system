@@ -709,6 +709,161 @@ window.addEventListener("hashchange", route);
 window.addEventListener("load", () => {
   route();
   connectSSE();
+  bootShortcuts();
+  bootScreenshotMode();
+  setTimeout(bootOnboarding, 600);  // let the first view finish rendering
   // refresh stats once a second when on live view
   setInterval(() => { if (state.view === "live") renderLiveStats(); }, 1000);
 });
+
+// ─── Polish: keyboard shortcuts ─────────────────────────────────────────
+function bootShortcuts() {
+  const TAB_HASHES = {
+    "1": "#/",            "2": "#/autonomous",
+    "3": "#/chats",       "4": "#/pm",
+    "5": "#/ops",         "6": "#/cost",
+    "7": "#/replay",      "8": "#/autonomy",
+    "9": "#/audit",       "0": "#/history",
+  };
+  document.addEventListener("keydown", (e) => {
+    // Don't intercept when typing in an input/textarea
+    const tag = (document.activeElement && document.activeElement.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || document.activeElement.isContentEditable) return;
+    // Bare digit keys — jump to tab
+    if (TAB_HASHES[e.key] && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      location.hash = TAB_HASHES[e.key];
+      return;
+    }
+    // Cmd/Ctrl + / → focus the first chat input
+    if ((e.metaKey || e.ctrlKey) && e.key === "/") {
+      e.preventDefault();
+      const inp = document.querySelector("#chat-input, #ch-input, #pm-chat-input");
+      if (inp) inp.focus();
+    }
+  });
+  // Show a small hint at the bottom-right (collapsible)
+  showShortcutHint();
+}
+
+function showShortcutHint() {
+  if (document.getElementById("kb-hint")) return;
+  const h = document.createElement("div");
+  h.id = "kb-hint";
+  h.innerHTML =
+    '<span class="kb-k">1</span><span class="kb-k">2</span>…<span class="kb-k">0</span>' +
+    '<span class="kb-t">jump to tab</span>' +
+    '<button class="kb-x" type="button" aria-label="hide">×</button>';
+  document.body.appendChild(h);
+  h.querySelector(".kb-x").addEventListener("click", () => h.remove());
+  // Auto-dismiss after 8s
+  setTimeout(() => { if (h.parentNode) h.classList.add("kb-dim"); }, 8000);
+}
+
+// ─── Polish: screenshot mode (?screenshot=1) ────────────────────────────
+function bootScreenshotMode() {
+  const u = new URL(location.href);
+  if (u.searchParams.get("screenshot") === "1") {
+    document.body.classList.add("screenshot-mode");
+  }
+}
+
+// ─── Polish: onboarding tour (first visit) ──────────────────────────────
+function bootOnboarding() {
+  try {
+    if (localStorage.getItem("carson_onboarded") === "1") return;
+    if (location.search.indexOf("tour=1") < 0 &&
+        localStorage.getItem("carson_seen") === "1") {
+      localStorage.setItem("carson_seen", "1");
+      return;
+    }
+    localStorage.setItem("carson_seen", "1");
+  } catch (e) { /* private browsing — show once anyway */ }
+
+  const STEPS = [
+    {
+      tab: "live", title: "live · the agent graph",
+      body: "7 Carson agents around the central router. Pulses show activity in real time. Logs and the 60s timeline complete the picture.",
+    },
+    {
+      tab: "autonomous", title: "autonomous · coder swimlanes",
+      body: "4 active jobs in 9-phase swimlanes. Diamond markers are HITL pauses. Athena knowledge agents are at the bottom — fresh / syncing / stale.",
+    },
+    {
+      tab: "chats", title: "chats · multi-session",
+      body: "One sidebar per conversation, each with a focus (athena / coder / pm / compliance / ops / general) so the router knows who should answer.",
+    },
+    {
+      tab: "pm", title: "pm · drafts before commit",
+      body: "Epic tree, Confluence pages, kanban, and a PM agent that drafts Jira tickets from a sentence. Drafts always go through your review.",
+    },
+    {
+      tab: "cost", title: "cost · the demo opener",
+      body: "What Carson saved this quarter, in plain numbers. PRs shipped, eng-hours, dollars, bugs caught. The CFO panel.",
+    },
+    {
+      tab: "replay", title: "replay · time-travel any run",
+      body: "Pick a past run, hit play, watch agents collaborate frame by frame. Tool calls inspected. Reasoning stream synced to the playhead.",
+    },
+    {
+      tab: "audit", title: "audit · compliance trail",
+      body: "Every meaningful agent action gets logged: deploys, approvals, data access, rollbacks. Filter, export to PDF.",
+    },
+  ];
+
+  let idx = 0;
+  const wrap = document.createElement("div");
+  wrap.id = "onb-overlay";
+  wrap.innerHTML =
+    '<div class="onb-card">' +
+      '<div class="onb-step" id="onb-step">1 / ' + STEPS.length + '</div>' +
+      '<div class="onb-title" id="onb-title"></div>' +
+      '<div class="onb-body" id="onb-body"></div>' +
+      '<div class="onb-actions">' +
+        '<button class="onb-skip" id="onb-skip" type="button">skip tour</button>' +
+        '<button class="onb-next" id="onb-next" type="button">next →</button>' +
+      "</div>" +
+      '<div class="onb-progress"><div class="onb-progress-fl" id="onb-progress-fl"></div></div>' +
+    "</div>";
+  document.body.appendChild(wrap);
+
+  const stepEl = document.getElementById("onb-step");
+  const titleEl = document.getElementById("onb-title");
+  const bodyEl = document.getElementById("onb-body");
+  const nextBtn = document.getElementById("onb-next");
+  const skipBtn = document.getElementById("onb-skip");
+  const progressFl = document.getElementById("onb-progress-fl");
+
+  function render() {
+    const s = STEPS[idx];
+    if (!s) return finish();
+    location.hash = "#/" + (s.tab === "live" ? "" : s.tab);
+    stepEl.textContent = (idx + 1) + " / " + STEPS.length;
+    titleEl.textContent = s.title;
+    bodyEl.textContent = s.body;
+    nextBtn.textContent = (idx === STEPS.length - 1) ? "got it ✓" : "next →";
+    progressFl.style.width = (((idx + 1) / STEPS.length) * 100).toFixed(1) + "%";
+    document.querySelectorAll(".tabs a").forEach(function (a) {
+      a.classList.toggle("onb-glow", a.dataset.tab === s.tab);
+    });
+  }
+
+  function finish() {
+    document.querySelectorAll(".tabs a").forEach(function (a) { a.classList.remove("onb-glow"); });
+    try { localStorage.setItem("carson_onboarded", "1"); } catch (e) {}
+    wrap.classList.add("onb-fadeout");
+    setTimeout(function () { if (wrap.parentNode) wrap.remove(); }, 250);
+  }
+
+  nextBtn.addEventListener("click", function () {
+    idx++;
+    if (idx >= STEPS.length) finish();
+    else render();
+  });
+  skipBtn.addEventListener("click", finish);
+  document.addEventListener("keydown", function escHandler(e) {
+    if (e.key === "Escape") { finish(); document.removeEventListener("keydown", escHandler); }
+  });
+
+  render();
+}

@@ -2590,3 +2590,227 @@ body {
 @media (max-width:1280px) { .pm-grid { grid-template-columns:1fr 1fr; } .pm-chat { grid-column:1/-1; height:480px; position:relative; top:0; } }
 @media (max-width:900px) { .pm-grid { grid-template-columns:1fr; } .pm-kanban { grid-template-columns:repeat(2,1fr); } }
 @media (max-width:520px) { .pm-kanban { grid-template-columns:1fr; } }
+
+/* =====================================================================
+   18. Polish — view transitions, keyboard hints, screenshot mode,
+       onboarding tour
+   ===================================================================== */
+
+/* View fade-in when switching tabs */
+.view {
+  animation: view-in 0.36s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Subtle stagger on cards within the view */
+.view-cost .k,
+.view-cost .card,
+.view-autonomy .au-c,
+.view-autonomy .card,
+.view-audit .au-s,
+.view-pm .card,
+.auto-job {
+  animation: card-in 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.view-cost .k:nth-child(1) { animation-delay: 0.04s; }
+.view-cost .k:nth-child(2) { animation-delay: 0.10s; }
+.view-cost .k:nth-child(3) { animation-delay: 0.16s; }
+.view-cost .k:nth-child(4) { animation-delay: 0.22s; }
+.view-audit .au-s:nth-child(1) { animation-delay: 0.04s; }
+.view-audit .au-s:nth-child(2) { animation-delay: 0.10s; }
+.view-audit .au-s:nth-child(3) { animation-delay: 0.16s; }
+.view-audit .au-s:nth-child(4) { animation-delay: 0.22s; }
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Tab pill — gentle hover lift */
+.tabs a {
+  transition: background 0.18s, color 0.18s, transform 0.18s;
+}
+.tabs a:hover { background: rgba(255,255,255,0.04); color: var(--tx-1); }
+.tabs a.on:hover { background: rgba(124,156,255,0.18); }
+
+/* Keyboard shortcut hint pill (bottom-right) */
+#kb-hint {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: rgba(17,21,31,0.92);
+  border: 1px solid var(--bd-0);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--tx-1);
+  z-index: 100;
+  backdrop-filter: blur(8px);
+  transition: opacity 0.4s;
+}
+#kb-hint.kb-dim { opacity: 0.32; }
+#kb-hint:hover { opacity: 1 !important; }
+.kb-k {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--bd-0);
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--tx-0);
+}
+.kb-t { color: var(--tx-2); margin: 0 4px 0 6px; }
+.kb-x {
+  width: 18px; height: 18px;
+  background: transparent;
+  border: none;
+  color: var(--tx-3);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 4px;
+}
+.kb-x:hover { color: var(--tx-0); }
+
+/* Screenshot mode — hides operational chrome */
+body.screenshot-mode .conn,
+body.screenshot-mode .bell,
+body.screenshot-mode #kb-hint,
+body.screenshot-mode #onb-overlay {
+  display: none !important;
+}
+body.screenshot-mode .topbar {
+  border-bottom-color: rgba(255,255,255,0.10);
+}
+
+/* Onboarding tour — overlay + card */
+#onb-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(0,0,0,0.45), rgba(0,0,0,0.78));
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0 60px 0;
+  animation: onb-fade 0.32s ease both;
+  pointer-events: none;
+}
+#onb-overlay.onb-fadeout {
+  animation: onb-fade-out 0.25s ease both;
+}
+@keyframes onb-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes onb-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.onb-card {
+  pointer-events: auto;
+  width: min(540px, 90vw);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.012)), #11151f;
+  border: 1px solid rgba(124,156,255,0.30);
+  border-radius: 14px;
+  padding: 22px 22px 16px 22px;
+  box-shadow: 0 18px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(124,156,255,0.10) inset;
+  position: relative;
+  overflow: hidden;
+}
+.onb-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(700px 220px at 50% -30%, rgba(124,156,255,0.18), transparent 60%);
+  pointer-events: none;
+}
+.onb-card > * { position: relative; z-index: 1; }
+.onb-step {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--tx-2);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.onb-title {
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--tx-0);
+  margin-bottom: 8px;
+  letter-spacing: -0.005em;
+}
+.onb-body {
+  font-size: 13px;
+  color: var(--tx-1);
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+.onb-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+.onb-skip, .onb-next {
+  padding: 7px 18px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 7px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.onb-skip {
+  background: transparent;
+  border: 1px solid var(--bd-0);
+  color: var(--tx-2);
+}
+.onb-skip:hover { background: rgba(255,255,255,0.04); color: var(--tx-1); }
+.onb-next {
+  background: linear-gradient(135deg, #7c9cff, #c69bff);
+  border: none;
+  color: #0a0d14;
+  font-weight: 500;
+  box-shadow: 0 4px 14px rgba(124,156,255,0.30);
+}
+.onb-next:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(124,156,255,0.40); }
+.onb-progress {
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.onb-progress-fl {
+  height: 100%;
+  background: linear-gradient(90deg, #7c9cff, #c69bff);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Glow on the highlighted tab */
+.tabs a.onb-glow {
+  background: rgba(124,156,255,0.20) !important;
+  color: #b9c5ff !important;
+  box-shadow: 0 0 0 2px rgba(124,156,255,0.40), 0 0 18px rgba(124,156,255,0.35);
+  animation: onb-pulse 1.6s infinite;
+}
+@keyframes onb-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(124,156,255,0.40), 0 0 18px rgba(124,156,255,0.35); }
+  50%      { box-shadow: 0 0 0 2px rgba(124,156,255,0.60), 0 0 28px rgba(124,156,255,0.55); }
+}
+
+@media (max-width: 600px) {
+  #kb-hint { font-size: 10px; padding: 4px 8px; }
+  .onb-card { width: 92vw; padding: 18px; }
+}
