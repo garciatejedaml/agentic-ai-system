@@ -1,5 +1,25 @@
 # Carson Copilot · paste-ready prompts
 
+> **Behavioral foundation**
+> Every prompt below assumes Copilot is bound by the
+> behavioral constitution at `AGENT_BEHAVIOR_GUARDRAILS.md`.
+> If Copilot deviates from any invariant (asks before changing,
+> no assumptions, langgraph-routed, no prompt overrides, no
+> hardcoding, surface tradeoffs, stop on ambiguity, no emojis,
+> canonical names, single Carson, reuse patterns), say "no" and
+> point it back to the relevant section.
+>
+> Reference docs at the repo root, in priority order:
+> - `AGENT_BEHAVIOR_GUARDRAILS.md` — the constitution
+> - `CARSON_PATTERNS.md` — canonical patterns (ingestion, agents,
+>   MCP tools, registration, LLM router, critic, autonomous variants)
+> - `CARSON_AUDIT_PROMPTS.md` — read-only audit prompts (10 prompts)
+> - `CARSON_REFACTOR_PROMPTS.md` — refactor prompts that apply changes
+> - `CARSON_INSTRUCTION.md` — bridge wireup runbook
+> - `CARSON_AUDIT_PLAYBOOK.md` — full repo self-audit playbook
+
+
+
 > **Quick index**
 > - **Audit prompt** — paste this when you want Copilot to run the
 >   self-audit autonomously (read-only, produces findings docs).
