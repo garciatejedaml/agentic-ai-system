@@ -683,6 +683,7 @@ function route() {
   const hash = location.hash || "#/";
   if (hash === "#/" || hash === "") return showLive();
   if (hash === "#/autonomous" && typeof window.showAutonomous === "function") return window.showAutonomous();
+  if (hash === "#/groups" && typeof window.showGroups === "function") return window.showGroups();
   if (hash === "#/chats" && typeof window.showChats === "function") return window.showChats();
   if (hash === "#/pm" && typeof window.showPM === "function") return window.showPM();
   if (hash === "#/ops" && typeof window.showOps === "function") return window.showOps();

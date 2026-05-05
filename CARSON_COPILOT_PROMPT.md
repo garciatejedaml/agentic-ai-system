@@ -11,6 +11,95 @@
 
 ---
 
+## Agent rooms wireup · paste verbatim
+
+Use this AFTER the dashboard merge has landed. Wires the new
+`#/groups` view to the real Carson runtime so user messages in a
+room actually drive a langgraph run and the strands intermediate
+events stream back as the trace.
+
+```
+@carson-fixer apply AGENT-ROOMS-WIREUP
+
+Goal: connect the new /#/groups view to the real Carson runtime.
+The view + endpoints + schema are already shipped in the merge.
+This bridge replaces the mocked router fallback in
+routes.api_agent_room_send with a real langgraph dispatch, and
+adds publishers in each agent that emit strands events into the
+room's trace.
+
+Scope: ONLY the agent_rooms wireup. Do NOT touch carson_dashboard/
+static files, the audit kit, or any other behavior bridge.
+
+Reply with a 5-line plan and the per-event mapping table BEFORE
+applying. I will confirm.
+
+Resolution rules:
+
+  Step 1. In carson_dashboard/routes.py, replace the mocked body of
+  api_agent_room_send with a call to webhooks.dispatch_room_message
+  (you'll create this helper). The endpoint must STILL append the
+  user_message event synchronously and emit agent_room.event over
+  SSE — those parts of the existing handler are correct.
+
+  Step 2. In carson_dashboard/webhooks.py, add:
+    dispatch_room_message(room_id, text, name)
+      - Look up the room via agent_rooms.get_room(room_id)
+      - If room.agent in {'router', None} → call the real router
+        (heuristic + haiku per CARSON_INSTRUCTION.md §3 Bridge 1)
+      - If room.agent is a known agent name → bypass router, dispatch
+        directly to that agent's strands run
+      - On the langgraph callback hooks, append events to the room
+        via agent_rooms.append_event AND publish on the bus
+
+  Step 3. Add per-event mapping in the strands callback handler:
+    LangGraph callback           Strands event_type to append
+    ───────────────────────────  ───────────────────────────────
+    on_chain_start                thinking (with kind='plan')
+    on_llm_start                  (no event — internal)
+    on_llm_end                    (no event — internal)
+    on_tool_start                 tool_call
+    on_tool_end                   tool_result
+    on_agent_action               delegation (if cross-agent)
+    on_agent_finish               agent_message
+    webhooks.request_hitl(...)    hitl_request
+
+  Step 4. SSE event shape — every appended event also publishes:
+    {
+      "type": "agent_room.event",
+      "room": <room_id>,
+      "event_type": <one of the 9 types>,
+      "actor": <agent name>,
+      "payload": <event-specific>,
+      "ts": <unix>
+    }
+  The frontend already listens for agent_room.event; do not change
+  the shape.
+
+After applying:
+  - Verify in browser at /dashboard#/groups :
+    1. Click "+ new room"
+    2. Pick agent "aquiles" + title "test refactor"
+    3. Send a message: "fix the bug in webhook_handler.py"
+    4. Within 5s, the room shows: routing → thinking → tool_call →
+       tool_result → ... → hitl_request OR agent_message
+  - Verify another room (existing aquiles room with J-2417) still
+    renders its seed trace correctly (no regression).
+  - Take screenshots of (a) new room post-creation, (b) existing
+    room with full trace. Attach to the PR.
+
+Constraints:
+  - Do NOT modify any file in carson_dashboard/static/
+  - Do NOT change the response shape of /api/agent-rooms/* endpoints
+  - Do NOT change the SSE event shape (room, event_type, actor, payload, ts)
+  - Heuristic classifier ships first — Haiku is a follow-up
+  - One PR titled "feat(rooms): wire agent_rooms to real strands runtime"
+  - If a strands callback hook isn't available in your version, STOP
+    and ask — do not improvise an event mapping
+```
+
+---
+
 ## Dashboard internal merge · paste verbatim
 
 Use this when Claude's new dashboard is staged inside

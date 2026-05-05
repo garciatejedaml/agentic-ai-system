@@ -10,7 +10,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
-from . import audit, autonomous, chats, db, metrics, ops_db, pm, replay, webhooks
+from . import (agent_rooms, audit, autonomous, chats, db, metrics, ops_db,
+               pm, replay, webhooks)
 from .stream import bus, serialize
 
 router = APIRouter()
@@ -402,6 +403,95 @@ async def api_pm_draft_confluence(payload: dict = Body(...)) -> JSONResponse:
         description=payload["description"],
         space=payload.get("space", "GENERAL"),
     ))
+
+
+# ── Agent rooms (groups view) ──────────────────────────────────────────────
+
+
+@router.get("/api/agent-rooms")
+async def api_agent_rooms(archived: bool = False) -> JSONResponse:
+    return JSONResponse(agent_rooms.list_rooms(include_archived=archived))
+
+
+@router.post("/api/agent-rooms")
+async def api_agent_room_create(payload: dict = Body(...)) -> JSONResponse:
+    """Create a new dynamic room. Body: {title, agent?}."""
+    title = (payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(400, "title required")
+    agent = payload.get("agent")
+    room = agent_rooms.create_room(title=title, agent=agent)
+    bus.publish({"type": "agent_room.created", "room": room["name"],
+                 "agent": room.get("agent"), "title": room.get("title")})
+    return JSONResponse(room)
+
+
+@router.delete("/api/agent-rooms/{name}")
+async def api_agent_room_archive(name: str) -> JSONResponse:
+    if not agent_rooms.get_room(name):
+        raise HTTPException(404, f"room {name} not found")
+    agent_rooms.archive_room(name)
+    return JSONResponse({"ok": True})
+
+
+@router.get("/api/agent-rooms/registry")
+async def api_agent_registry() -> JSONResponse:
+    """Returns the catalog of available agents to power a new room."""
+    return JSONResponse(agent_rooms.list_agent_registry())
+
+
+@router.get("/api/agent-rooms/{name}")
+async def api_agent_room_detail(name: str) -> JSONResponse:
+    room = agent_rooms.get_room(name)
+    if not room:
+        raise HTTPException(404, f"room {name} not found")
+    return JSONResponse(room)
+
+
+@router.get("/api/agent-rooms/{name}/trace")
+async def api_agent_room_trace(name: str, job_id: str | None = None,
+                                limit: int = 200) -> JSONResponse:
+    if not agent_rooms.get_room(name):
+        raise HTTPException(404, f"room {name} not found")
+    agent_rooms.mark_read(name)
+    events = agent_rooms.list_events(name, job_id=job_id, limit=limit)
+    return JSONResponse({"room": name, "job_id": job_id, "events": events})
+
+
+@router.post("/api/agent-rooms/{name}/messages")
+async def api_agent_room_send(name: str, payload: dict = Body(...)) -> JSONResponse:
+    """Append a user message into a room. Real wiring (Bridge 1 of
+    CHAT_WIREUP) replaces the body of this with a langgraph dispatch
+    that produces follow-up strands events asynchronously."""
+    text = payload.get("text", "").strip()
+    if not text:
+        raise HTTPException(400, "text required")
+    room = agent_rooms.get_room(name)
+    if not room:
+        raise HTTPException(404, f"room {name} not found")
+    ev_id = agent_rooms.append_event({
+        "room": name,
+        "job_id": room.get("job_id"),
+        "event_type": "user_message",
+        "actor": payload.get("name", "you"),
+        "payload": {"text": text},
+    })
+    bus.publish({
+        "type": "agent_room.event",
+        "room": name,
+        "id": ev_id,
+        "event_type": "user_message",
+        "text": text,
+    })
+    return JSONResponse({"ok": True, "id": ev_id})
+
+
+@router.post("/api/agent-rooms/{name}/pin")
+async def api_agent_room_pin(name: str, payload: dict = Body(default={})) -> JSONResponse:
+    if not agent_rooms.get_room(name):
+        raise HTTPException(404, f"room {name} not found")
+    agent_rooms.pin_room(name, bool(payload.get("pinned", True)))
+    return JSONResponse({"ok": True})
 
 
 # ── SSE ────────────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
-from . import audit, autonomous, chats, db, ops_db, pm, simulator
+from . import agent_rooms, audit, autonomous, chats, db, ops_db, pm, simulator
 from .routes import router, mount_static
 
 
@@ -24,6 +24,7 @@ def create_app(seed: bool = True, simulate: bool = True) -> FastAPI:
     audit.init_audit_db()
     chats.init_chat_db()
     pm.init_pm_db()
+    agent_rooms.init_rooms_db()
     if seed:
         simulator.seed_history()
         simulator.seed_ops_history()
@@ -31,6 +32,7 @@ def create_app(seed: bool = True, simulate: bool = True) -> FastAPI:
         simulator.seed_audit_history()
         simulator.seed_chat_sessions()
         pm.seed_demo()
+        agent_rooms.seed_demo_rooms()
 
     app = FastAPI(title="Carson dashboard")
     app.include_router(router)

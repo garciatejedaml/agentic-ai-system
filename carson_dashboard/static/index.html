@@ -17,6 +17,7 @@
   <nav class="tabs">
     <a href="#/" data-tab="live">live</a>
     <a href="#/autonomous" data-tab="autonomous">autonomous</a>
+    <a href="#/groups" data-tab="groups">groups</a>
     <a href="#/chats" data-tab="chats">chats</a>
     <a href="#/pm" data-tab="pm">pm</a>
     <a href="#/ops" data-tab="ops">ops</a>
@@ -535,6 +536,53 @@
   </section>
 </template>
 
+<template id="tpl-groups">
+  <section class="view view-groups">
+    <div class="ar-grid">
+      <aside class="ar-rail">
+        <div class="ar-rail-h">
+          <span class="ar-rail-tt">agent rooms</span>
+          <span class="ar-rail-mt" id="ar-online">— agents</span>
+        </div>
+        <button class="ar-new" id="ar-new-btn" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          new room
+        </button>
+        <div class="ar-search">
+          <div class="ar-search-inp">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+            <span>search rooms or messages</span>
+          </div>
+        </div>
+        <div class="ar-rooms" id="ar-rooms"></div>
+      </aside>
+
+      <section class="ar-chat">
+        <div class="ar-chat-h">
+          <div class="ar-chat-h-l">
+            <div class="ar-chat-h-av" id="ar-h-av">aq</div>
+            <div class="ar-chat-h-info">
+              <span class="ar-chat-h-tt" id="ar-h-nm">—</span>
+              <span class="ar-chat-h-agent" id="ar-h-agent">—</span>
+              <span class="ar-chat-h-mt" id="ar-h-chips"></span>
+            </div>
+          </div>
+          <div class="ar-chat-h-r">
+            <div class="ar-icon-btn">⋮</div>
+          </div>
+        </div>
+        <div class="ar-tape" id="ar-tape"></div>
+        <form class="chat-compose" id="ar-compose">
+          <textarea id="ar-input" rows="1" placeholder="reply to this agent · or @mention another to bring them in" autocomplete="off"></textarea>
+          <button type="submit" class="chat-send" aria-label="send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </form>
+      </section>
+    </div>
+  </section>
+</template>
+
 <script src="/dashboard/static/dashboard.js"></script>
 <script src="/dashboard/static/ops.js"></script>
 <script src="/dashboard/static/autonomous.js"></script>
@@ -544,5 +592,6 @@
 <script src="/dashboard/static/audit.js"></script>
 <script src="/dashboard/static/chats.js"></script>
 <script src="/dashboard/static/pm.js"></script>
+<script src="/dashboard/static/agent_rooms.js"></script>
 </body>
 </html>
