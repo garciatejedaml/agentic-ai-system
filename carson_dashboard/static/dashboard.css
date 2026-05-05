@@ -2605,16 +2605,17 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Subtle stagger on cards within the view */
+/* Subtle stagger on cards within the view (only one-time-render views) */
 .view-cost .k,
 .view-cost .card,
 .view-autonomy .au-c,
 .view-autonomy .card,
 .view-audit .au-s,
-.view-pm .card,
-.auto-job {
+.view-pm .card {
   animation: card-in 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
+/* .auto-job intentionally excluded — it re-renders every 1s
+   (for relative timestamps), so animating on each render causes flicker. */
 .view-cost .k:nth-child(1) { animation-delay: 0.04s; }
 .view-cost .k:nth-child(2) { animation-delay: 0.10s; }
 .view-cost .k:nth-child(3) { animation-delay: 0.16s; }

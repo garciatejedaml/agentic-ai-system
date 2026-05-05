@@ -24,13 +24,16 @@
       auton.booted = true;
     }
     refresh();
+    // Re-render every 15s to keep relative timestamps fresh.
+    // (Was 1s — caused flicker on .auto-job cards. The timestamps
+    // change at minute granularity so 15s is plenty.)
     setInterval(function () {
       if (location.hash === "#/autonomous") {
         renderHeader();
         renderJobs();
         renderAgents();
       }
-    }, 1000);
+    }, 15000);
   };
 
   function setTab(name) {
