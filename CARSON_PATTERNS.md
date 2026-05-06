@@ -811,6 +811,289 @@ review is bounded.
 
 ---
 
+## §11. Deterministic vs reactive — auto-detection in the router
+
+### The decision
+
+For every autonomous-track task that hits a coder agent (code agent,
+release agent, athena code agent), the router decides:
+
+- **Deterministic mode**: run a predefined phase graph
+  (clone → analyze → generate → test → commit → pr → review →
+  build → deploy). Predictable, cheaper, easier to audit.
+- **Reactive mode**: hand the task to the agent's LLM and let it
+  decide actions step-by-step. More flexible, more expensive,
+  harder to audit.
+
+The choice is not made by keyword — same as agent selection (§8).
+The router's LLM classifies based on the task description.
+
+### Heuristic the router prompts the LLM to apply
+
+```
+ROUTER_DET_REACT_SYSTEM_ADDENDUM = """\
+Within the same classification call, also decide deterministic vs
+reactive mode for the chosen agent. Add to the JSON:
+
+  "mode": "deterministic" | "reactive",
+  "mode_rationale": "<one sentence>"
+
+Apply these rules to your decision:
+
+DETERMINISTIC if:
+  - The task has a single concrete deliverable AND clear acceptance
+    criteria (e.g., "add field X to endpoint Y, all existing tests
+    must pass").
+  - The task fits a known pattern (refactor, version bump, add
+    field, replace method call, mass rename).
+  - The task description references a Jira ticket whose
+    description has clear DoD.
+  - The agent's autonomous_phases list covers every step the task
+    requires.
+
+REACTIVE if:
+  - The task is investigation / exploration (e.g., "figure out why
+    test_X is flaky", "understand why this deploy failed").
+  - The task has constraints that change based on what's
+    discovered (e.g., "fix all race conditions in module Y" —
+    you don't know until you read).
+  - The task spans multiple unrelated systems (the phase list of
+    a single agent doesn't fit).
+  - The task description has phrases like "explore", "investigate",
+    "decide", "figure out", "see if".
+
+DEFAULT to DETERMINISTIC when uncertain. Reactive runs are 3-10x
+more expensive in tokens and harder to audit; only use when the
+task genuinely requires LLM-driven exploration.
+
+If the task could go either way, set "mode": "deterministic" and
+note in mode_rationale "could be reactive but defaulting to
+deterministic; ask the user if a wider exploration is needed."
+"""
+```
+
+### Why this matters
+
+1. **Cost**: a deterministic run is roughly 1/5th the tokens of a
+   reactive run for the same task type.
+2. **Auditability**: a deterministic run produces a known phase
+   sequence the dashboard can show. Reactive runs are
+   open-ended — harder to summarize.
+3. **Predictability**: the human knows what an autonomous deploy
+   pipeline looks like. They don't know what "the LLM might do
+   next" looks like.
+4. **HITL placement**: deterministic mode has fixed gates between
+   phases. Reactive mode requires the agent to decide when to ask,
+   which is unreliable.
+
+### How the dashboard surfaces the decision
+
+The chip in the chat header (`carson_dashboard/static/agent_rooms.js`
+already renders this) shows `deterministic` or `reactive` as a
+visible mode flag. The audit log records the rationale field.
+Reactive runs cost more, so the cost view's per-task chart
+distinguishes them.
+
+### Migration
+
+If the existing router only routes by track (no mode), introduce
+the mode decision in the same LLM call (additive — no schema
+break). Then update each agent's run loop to:
+
+```python
+def run(task, mode):
+    if mode == "deterministic":
+        return run_phases(task, self.autonomous_phases)
+    elif mode == "reactive":
+        return self._react(task)  # the open-ended LLM loop
+```
+
+Anti-patterns:
+- Picking mode by env flag (loses per-task nuance).
+- Picking mode by agent type (some agents support both).
+- Always reactive (cost goes through the roof).
+- Always deterministic (some tasks won't fit any phase list).
+
+---
+
+## §12. Self-learning facts (carson_facts)
+
+### The problem
+
+Agents repeatedly hit the same questions: "which Jira project owns
+this repo?", "which Bitbucket project is credit-tech in?", "what's
+the prod canary threshold for service X?". They ask the human.
+The human answers. Next session, a different agent asks the same
+question. The human is annoyed. The fact is lost.
+
+### The pattern
+
+A small key-value store, persistent, surfaced in the dashboard.
+Every agent queries before asking; every answered question gets
+persisted; conflicts are flagged for re-verification.
+
+### Schema
+
+```sql
+CREATE TABLE carson_facts (
+    key            TEXT PRIMARY KEY,
+    value          TEXT NOT NULL,
+    topic          TEXT,
+    source         TEXT NOT NULL,    -- 'human' | 'inference' | 'doc'
+    learned_from   TEXT NOT NULL,    -- agent name that captured the fact
+    learned_at     REAL NOT NULL,
+    confirmed_count INTEGER DEFAULT 1,
+    last_confirmed_at REAL,
+    last_used_at   REAL,
+    last_used_by   TEXT,
+    use_count      INTEGER DEFAULT 0,
+    expires_at     REAL,
+    contradiction_count INTEGER DEFAULT 0
+);
+
+CREATE TABLE carson_fact_history (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    key            TEXT NOT NULL,
+    old_value      TEXT,
+    new_value      TEXT,
+    changed_by     TEXT,
+    changed_at     REAL NOT NULL,
+    reason         TEXT
+);
+
+CREATE INDEX idx_facts_topic ON carson_facts(topic);
+CREATE INDEX idx_facts_use   ON carson_facts(use_count DESC);
+```
+
+### API surface
+
+```python
+# carson_kb/facts.py
+
+def recall(key: str) -> dict | None:
+    """Return the fact + metadata, or None if unknown.
+    Bumps use_count + last_used_at.
+    """
+
+def learn(key: str, value: str, topic: str | None = None,
+          source: str = "human", learned_from: str = "unknown",
+          ttl_days: int | None = None) -> dict:
+    """Persist a fact. If the key already exists with a
+    different value, increments contradiction_count (but does
+    NOT overwrite — see resolve_contradiction)."""
+
+def confirm(key: str, by_agent: str) -> dict:
+    """Re-confirm an existing fact (e.g., the agent verified it
+    against a current source). Bumps confirmed_count +
+    last_confirmed_at."""
+
+def resolve_contradiction(key: str, value: str, by: str,
+                            reason: str) -> dict:
+    """Replace a contradicted fact. Logs the change in
+    carson_fact_history with reason."""
+
+def list_facts(topic: str | None = None,
+               limit: int = 100,
+               sort: str = "use") -> list[dict]:
+    """Browse the fact store. `sort`: 'use' | 'recent' | 'stale'."""
+
+def list_stale(threshold_days: int = 30) -> list[dict]:
+    """Facts that haven't been confirmed in N days. Surfaced in
+    the dashboard for human re-verification."""
+```
+
+### Usage from an agent
+
+```python
+from carson_kb.facts import recall, learn
+
+class BitbucketAgent(...):
+    def find_project_for_service(self, service: str) -> str:
+        key = f"bitbucket_project_for:{service}"
+
+        # 1. recall first
+        cached = recall(key)
+        if cached:
+            return cached["value"]
+
+        # 2. ask the human (per Invariant 2)
+        project = self.ask_human(
+            f"Which Bitbucket project owns the {service} repo?"
+        )
+
+        # 3. learn
+        learn(
+            key=key, value=project,
+            topic="bitbucket_mapping",
+            source="human",
+            learned_from=self.name,
+        )
+        return project
+```
+
+### What gets surfaced in the dashboard
+
+A new tab `learns` (or sub-tab under `groups`) showing:
+
+1. **Recent learns** — feed of `(agent, key, value, when)` rows
+   with the most recent at the top. Visible: which agent learned
+   what, when. Confidence: `confirmed_count`.
+2. **Most-used facts** — the top 20 facts by `use_count`. These
+   are the ones saving the most time.
+3. **Stale facts** — facts not confirmed in 30+ days. Each has a
+   "re-confirm" button (triggers an agent to verify).
+4. **Contradictions** — facts where two agents have learned
+   different values. Each has a "resolve" form.
+5. **Per-topic browse** — facts grouped by topic
+   (bitbucket_mapping, jira_mapping, deploy_thresholds, etc.).
+
+The dashboard surface lives in `carson_dashboard/static/learns.js`
+(to be added) and reads from `/api/facts/recent`,
+`/api/facts/top`, `/api/facts/stale`, `/api/facts/contradictions`.
+
+### Anti-patterns
+
+- **Stuffing the LLM context with all facts**: facts are a KV
+  store the agent queries on demand. Don't preload the prompt
+  with thousands of facts.
+- **No TTL**: some facts are time-sensitive (e.g., on-call
+  rotation). Use the ttl_days parameter to expire them.
+- **Auto-overwriting on contradiction**: the latest answer is not
+  always the correct one. Always log + ask.
+- **Source = "inference"**: avoid storing facts that were inferred
+  (the LLM guessed). Stick to source = "human" or source = "doc"
+  (extracted from a Confluence page or similar).
+
+### Migration
+
+This is additive. Introduce:
+1. `carson_kb/facts.py` with the API + tests
+2. The DB tables (migration in `_migrate_db.py`)
+3. The dashboard view (`learns.js`) — read-only at first
+4. ONE agent (recommended: bitbucket agent) wired with
+   recall/learn — proof of concept
+5. After 1 week of usage data, extend to other agents
+
+### When the human says "the agents keep asking the same questions"
+
+Response:
+
+```
+That's the carson_facts gap. Three steps:
+
+1. Audit which questions repeat: I can grep the agent run logs
+   for human-questions-asked. The top 10 by frequency are
+   candidates for fact-store.
+2. Wire the bitbucket / jira / spinnaker agents (whichever has
+   the most repeats) to query carson_facts before asking.
+3. Surface the dashboard view so you can see what's been learned
+   and re-confirm what's stale.
+
+I'll do step 1 first (read-only); confirm and I'll start.
+```
+
+---
+
 ## §7. Self-check before any pattern-eligible task
 
 Before doing any task that resembles ingestion, agent creation,

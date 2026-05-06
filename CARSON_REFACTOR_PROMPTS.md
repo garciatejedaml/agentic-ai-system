@@ -838,6 +838,115 @@ PR title format:
 
 ---
 
+## 14. REFACTOR-IMPROVE-AGENTS
+
+```
+@carson-fixer apply REFACTOR-IMPROVE-AGENTS
+
+Spec: CARSON_AGENT_TEMPLATES.md + CARSON_PATTERNS.md §11 (det/react)
++ §12 (carson_facts).
+
+Goal: lift each existing agent to match the canonical template:
+- System prompt structure (identity, HITL triggers, mode awareness,
+  failure handling, tone)
+- Tool surface (signatures, docstrings, pydantic args)
+- Self-learning integration (recall/learn against carson_facts
+  for repeated questions)
+
+Apply per agent — ONE PR per agent. The 8 covered:
+- bitbucket agent (§0)
+- jira agent (§1)
+- jenkins agent (§2)
+- spinnaker agent (§3)
+- terraform agent (§4)
+- datadog agent (§5)
+- confluence agent (§6)
+- critic agent (§7)
+
+Reply with:
+  1. The 5-line plan for THIS agent
+  2. The diff sample (system prompt before/after)
+  3. The tool surface comparison (existing tools vs canonical)
+  4. The self-learning integration plan (which facts will be
+     recalled/learned in this agent)
+BEFORE applying. I will confirm.
+
+Apply per agent in this exact order:
+
+  Step 1 — Read the existing agent file. Identify:
+    - What's already aligned (preserve)
+    - What's missing (add from template)
+    - What's customized (preserve unless contradicts the template)
+
+  Step 2 — System prompt:
+    a. Confirm load_base_system() is in place (per
+       REFACTOR-LOAD-BASE-SYSTEM). If not, STOP — that
+       refactor is a prerequisite.
+    b. Replace the agent-specific addendum with the canonical
+       version from the template, preserving any customization
+       that doesn't contradict the template (e.g., a specific
+       JPMC project code is fine; a tone change to "casual" is
+       not — that contradicts Invariant 7).
+
+  Step 3 — Tool surface:
+    a. For each tool in the template that the existing agent
+       lacks, add it.
+    b. For each tool in the existing agent not in the template,
+       PRESERVE — do not delete custom tools. They may be
+       legitimately specific.
+    c. Update tool docstrings to match the template's
+       discipline (what / when / when NOT / returns).
+    d. Convert untyped tools to pydantic args.
+    e. Keep the test fixtures up to date.
+
+  Step 4 — Self-learning integration (per CARSON_PATTERNS.md §12):
+    a. Identify the 3-5 most-likely-repeated questions this
+       agent asks the human (from the failure modes section of
+       its template).
+    b. For each, wire the recall(...) → ask → learn(...) flow
+       inside the appropriate tool or method.
+    c. Add a unit test that verifies: when carson_facts has the
+       answer, the agent does NOT ask the human.
+
+  Step 5 — Mode awareness:
+    a. Add `supports_autonomous` and `autonomous_phases` if the
+       template specifies them (already covered for bitbucket and
+       athena agents per REFACTOR-AUTONOMOUS-VARIANTS).
+    b. Make sure the agent's run loop respects the mode
+       parameter from the router (per CARSON_PATTERNS.md §11).
+
+  Step 6 — Verification:
+    a. Run pytest for that agent's tests.
+    b. Manually invoke the agent with one canonical task; verify
+       the system prompt is correctly composed (use logging or a
+       debug tool that prints the resolved prompt).
+    c. Verify the constitution hash check passes (per Invariant 4
+       enforcement).
+
+Constraints:
+  - One PR per agent
+  - Preserve any custom tool / behavior not contradicted by the
+    template
+  - Do NOT introduce emojis (Invariant 7)
+  - Do NOT modify the agent's name (use the canonical name from
+    the template; renames are REFACTOR-RENAME's job, not this
+    one's)
+  - Do NOT change the agent's color / track without proposing
+    a CARSON_AGENT_TEMPLATES.md update first
+  - If the template's tool surface conflicts with an existing
+    custom tool (same name, different signature), STOP and ask
+    which to keep
+
+If the agent has no tests, this refactor INCLUDES adding at least
+one happy-path test + one error-path test before the agent's
+upgraded prompt is committed.
+
+PR title format:
+  "refactor(agents): align <agent> to canonical template + learning"
+```
+
+---
+
 ## How to chain refactors safely
 
 For pre-demo cleanup, run audit prompts first (in the order from
