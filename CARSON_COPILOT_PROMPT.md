@@ -214,6 +214,111 @@ ask you to re-plan.
 
 ---
 
+## ChromaDB ingestion · paste verbatim
+
+Use this every time you need to embed/re-embed something into a
+ChromaDB collection. Designed to handle the common failure modes
+(HNSW corruption, credential expiry mid-run, partial writes) that
+happen on the VDI.
+
+```
+@carson-fixer apply INGEST-CHROMA
+
+Spec: CARSON_PATTERNS.md §1 (canonical ingestion path).
+
+Goal: ingest a corpus into a ChromaDB collection, with health checks
+before / after, credential-refresh handling, and resume-on-failure.
+
+Reply with a 5-line plan and the exact ingestion parameters BEFORE
+running. I will confirm.
+
+Required parameters (ask me if any is unclear):
+  - source path:        <ABS path to source corpus>
+  - collection name:    <athena.bob | athena.hydra | ... per profile>
+  - chunker:            AstChunker | MdChunker | TextChunker (default
+                        per file extension; ask if mixed)
+  - embedder:           BedrockEmbedder · titan-embed-text-v2 (default)
+  - reranker:           LlmReranker (default) | none
+  - resume_id:          if a previous run failed, the run id to
+                        resume from (else 'new')
+
+Steps (in this exact order — do NOT skip any):
+
+  Step 1 — Pre-flight health check (read-only):
+    a. Locate the canonical client at carson_kb/ingest.py (per §1).
+       Do NOT instantiate a new chromadb.PersistentClient anywhere.
+    b. Verify the collection's HNSW index is healthy:
+         - Open the collection.
+         - Query a known sentinel ('__health_check__') with k=1.
+         - If it raises HnswError / dimension mismatch / corrupted
+           segment → report, STOP. Do not attempt ingestion until
+           the index is repaired.
+    c. Verify credentials with a no-op Bedrock call (embed the
+       string '__creds_check__'). If it raises auth errors or
+       proxy errors, STOP and report — do NOT attempt to re-auth
+       silently or fall back to a different provider.
+    d. Snapshot the current chunk count + last-modified timestamp.
+       This is the rollback target if the run fails.
+
+  Step 2 — Plan the ingestion (read-only):
+    a. Walk the source path; produce the file list.
+    b. For each file, run the chunker DRY (no embedding) to get
+       chunk count.
+    c. Estimate: total chunks · total embedding tokens · cost.
+    d. Report: "Will ingest N files → M chunks → ~T tokens → ~$X.
+                Resume id: <uuid>. Confirm to proceed."
+    e. STOP and wait for 'confirmed' before any write.
+
+  Step 3 — Execute (idempotent, batched):
+    a. Process in batches of 32 chunks per Bedrock call (default).
+    b. After every batch, persist the resume cursor so the next
+       run can pick up where this stopped.
+    c. On any error during a batch:
+         - If transient (timeout, rate limit): retry up to 3 times
+           with exponential backoff. Log every retry.
+         - If credential expiry / proxy auth: STOP. Do NOT
+           silently re-auth. Return the resume id and error so the
+           human can re-run with fresh credentials.
+         - If HNSW corruption: STOP immediately. Do NOT continue
+           writing to a corrupted index — that compounds the
+           damage.
+    d. After all batches successful: write the run manifest to
+       carson_kb/runs/<resume_id>.json with start ts, end ts,
+       file list, chunk count, embedder version, model id.
+
+  Step 4 — Post-flight health check:
+    a. Re-query the sentinel '__health_check__'. Same shape
+       expected.
+    b. Verify chunk count delta matches the planned delta from
+       Step 2.
+    c. Run a sample similarity search with 5 known queries; verify
+       recall hasn't regressed (compare top-3 hits with snapshot
+       from Step 1d).
+    d. If any post-flight check fails, do NOT mark the run
+       successful — flag for human review.
+
+Constraints:
+  - Use only the canonical ingest function in carson_kb/. Do NOT
+    write a new ingestion script.
+  - Do NOT change embedder model mid-run.
+  - Do NOT silently mix chunkers — one file = one chunker.
+  - Do NOT overwrite an existing collection without explicit
+    'destroy' parameter set true (which I will pass only when I
+    really mean it).
+  - Do NOT proceed past Step 1 if any health check fails.
+  - Do NOT proceed past Step 2 without my 'confirmed'.
+  - On corruption: report, do not 'fix it real quick'. The index
+    repair is a separate operation.
+  - One Carson telemetry log entry per batch, with batch_id, chunk
+    count, latency, token count.
+
+If you encounter a case not covered by this prompt (e.g., the source
+contains a binary format we haven't seen), STOP and propose adding
+to CARSON_PATTERNS.md §1 before deviating.
+```
+
+---
+
 ## Self-audit · paste verbatim
 
 Use this **first**. Run the audit before any fix work. The audit

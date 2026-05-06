@@ -733,6 +733,111 @@ PR title:
 
 ---
 
+## 13. REFACTOR-KERBEROS
+
+```
+@carson-fixer apply REFACTOR-KERBEROS
+
+Spec: audit_outputs/kerberos_findings.md (KRB-* findings) +
+the Kerberos audit categorization (A: keep, B: low-effort replace,
+C: high-effort replace, D: dead code).
+
+Goal: eliminate Kerberos / NTLM / GSSAPI usage where possible.
+Process category B and D first (low risk), C in a separate PR
+each (case-by-case), and A is documented but untouched.
+
+Reply with:
+  1. Counts per category from the audit
+  2. The order you'll process Category B findings
+  3. The first Category C finding you'll address
+BEFORE applying. I will confirm.
+
+Apply per category:
+
+  Category D (dead code) — 1 PR for all of them.
+    Step D1. Verify each hit is genuinely dead by:
+       - Running `git log --all -S "<symbol>" -- <file>` to confirm
+         no recent reference.
+       - Searching for callers in the runtime path.
+    Step D2. Delete the files / blocks.
+    Step D3. Run `pytest -q` to confirm nothing broke.
+
+  Category B (low-effort replace) — 1 PR per surface.
+    Common surfaces and their replacements:
+
+      LDAP (Kerberos GSSAPI) → LDAP simple bind with rotated
+        service token from secrets manager.
+
+      Confluence (NTLM) → Confluence personal access token via
+        the existing confluence_oauth_setup module.
+
+      Outlook / Exchange (NTLM) → Microsoft Graph OAuth, using the
+        existing tenant + client ID config.
+
+      SQL Server (Trusted_Connection) → SQL Server SQL-auth with
+        a service account whose password is rotated quarterly via
+        secrets manager.
+
+      Hadoop client (Kerberos) → if the target cluster supports
+        Knox / Ranger OAuth, switch to that. If not, mark this as
+        Category C and STOP.
+
+    For each Category B, the diff pattern is:
+      - Change the auth setup line
+      - Add the new token / credential read from secrets manager
+      - Update the env var documentation
+      - Remove the krb5 / keytab references
+      - Update tests / fixtures
+
+  Category C (high-effort replace) — 1 PR per finding.
+    Each Category C is a discrete project. The refactor here is
+    to:
+      1. Add the new auth path alongside the old one (feature
+         flagged via `<service>_AUTH=kerberos|oauth`).
+      2. Migrate ONE caller to the new path.
+      3. Validate.
+      4. Migrate the rest.
+      5. Remove the old path once 30 days of clean logs.
+
+    For Category C, you do NOT complete the migration in this
+    refactor. You complete only Steps 1 and 2 here. Steps 3-5 are
+    follow-up PRs scheduled separately.
+
+  Category A (keep) — no code change.
+    But add a one-line comment at each call site:
+      # Kerberos required: <reason from audit>
+    so future audits can skip these without re-investigating.
+
+Constraints:
+  - Do NOT touch Category A.
+  - Do NOT bundle multiple Category B surfaces into one PR (one PR
+    per surface).
+  - Each PR includes:
+      - Removal of keytab paths from .env / config
+      - A test that auth-failure now produces a CLEAR error (not
+        a generic GSS-API error stack trace)
+  - For SQL Server / Oracle changes: confirm the new service
+    account has the same DB privileges as the previous Kerberos
+    principal — STOP and ask if you can't verify.
+  - For Hadoop / Spark / HDFS changes: STOP and ask before
+    touching — these are typically org-wide config that requires
+    coordination outside the codebase.
+  - Stop and report if the audit finding for a hit doesn't
+    include a Proposal field — that's a missing piece in the
+    audit, not something to improvise.
+
+After applying:
+  - Verify the affected service still works end-to-end
+  - Update any runbooks / Confluence pages that reference the
+    Kerberos setup steps
+  - Update the .env.template with the new auth env vars
+
+PR title format:
+  "refactor(auth): replace kerberos with <alternative> · <surface>"
+```
+
+---
+
 ## How to chain refactors safely
 
 For pre-demo cleanup, run audit prompts first (in the order from

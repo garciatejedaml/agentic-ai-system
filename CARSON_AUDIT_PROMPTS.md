@@ -492,6 +492,128 @@ Constraints:
 
 ---
 
+## K. Kerberos / SSO audit
+
+Goal: identify every Kerberos / NTLM / GSSAPI usage in the codebase
+and classify each by removability. The driver: Kerberos has been a
+recurring source of credential expiry failures, mid-run token loss,
+and unportable code. We want to know what we can move off it.
+
+```
+@carson-fixer apply AUDIT-KERBEROS
+
+Goal: catalog every Kerberos / NTLM / GSSAPI usage and propose
+alternatives.
+
+Scan the codebase for these patterns:
+
+1. **Direct Kerberos auth in code**:
+     grep -rEn "GSSAPI|gssapi|krb5|kinit|kerberos|HTTPKerberosAuth|KrbAuth|SPNEGO|SPNEGOAuth" \
+       --include="*.py" --include="*.ps1" --include="*.yaml" \
+       --include="*.json" --include="*.config" \
+       --exclude-dir=.venv --exclude-dir=.git .
+
+2. **NTLM / Windows-auth patterns**:
+     grep -rEn "HttpNtlmAuth|requests_negotiate_sspi|ntlm|negotiate" \
+       --include="*.py" --exclude-dir=.venv .
+
+3. **JAAS / SSPI / KrbHash configs**:
+     grep -rEn "java\.security\.auth\.login|KrbLogin|sasl\.kerberos|jaas\.conf" \
+       --include="*.py" --include="*.json" --include="*.yaml" \
+       --include="*.ini" --include="*.config" \
+       --exclude-dir=.venv .
+
+4. **HDFS / Hadoop / Spark Kerberos** (common JPMC pattern):
+     grep -rEn "hadoop\.security\.authentication|spark\.security|hdfs.*keytab" \
+       --include="*.py" --include="*.yaml" --include="*.conf" \
+       --exclude-dir=.venv .
+
+5. **Database connections that may rely on Kerberos**:
+     grep -rEn "Trusted_Connection=True|Integrated Security|integratedSecurity=true" \
+       --include="*.py" --include="*.ini" --include="*.yaml" \
+       --exclude-dir=.venv .
+
+6. **Outlook / Exchange / Confluence with NTLM/Kerberos**:
+     grep -rEn "exchangelib.*Kerberos|exchangelib.*NTLM" \
+       --include="*.py" --exclude-dir=.venv .
+
+7. **Shell scripts / PowerShell with kinit / setspn**:
+     grep -rEn "kinit|setspn|klist|kdestroy" \
+       --include="*.ps1" --include="*.sh" --include="*.bat" .
+
+For each hit, classify it into one of:
+
+  **A — Required, keep**
+    Kerberos is mandated for this surface (e.g., access to a system
+    that doesn't expose another auth method, or a compliance
+    constraint). Document the constraint in the finding so we
+    don't keep re-auditing it.
+
+  **B — Replaceable (low effort)**
+    A non-Kerberos auth method is documented + supported by the
+    target system. The replacement is a config change.
+      Examples:
+        - LDAP via Kerberos → LDAP simple bind with service token
+        - Confluence via NTLM → Confluence personal access token
+        - Outlook via NTLM → Microsoft Graph OAuth
+        - SQL Server Windows-auth → SQL Server SQL-auth with
+          rotated service account
+
+  **C — Replaceable (medium / high effort)**
+    A non-Kerberos path exists but requires non-trivial code
+    changes (e.g., switch a Hadoop client library, re-architect
+    a connection pool).
+
+  **D — Dead code**
+    Kerberos hooks for a feature that's no longer used / is
+    behind a flag that's permanently off.
+
+For each finding, output:
+
+  Category:    A | B | C | D
+  Location:    <file:line>
+  Surface:     <what system/service is being authenticated to>
+  Current:     <which Kerberos primitive is used>
+  Proposal:
+    A → "keep — required because <reason>"
+    B → "replace with <alternative>; estimated diff <X lines>"
+    C → "replace with <alternative>; estimated effort <X days>"
+    D → "delete entirely"
+  Risk:        low | medium | high
+  Verification: <how to confirm the replacement works>
+
+Severity:
+  P0 — credentials are stored in plaintext keytabs in source control
+  P1 — Kerberos failure path that has caused recurring outages
+  P2 — replaceable with low effort, no operational urgency
+  P3 — dead code, batch with the next janitor PR
+
+Also produce a top-line table:
+
+  | category | count | est_total_effort_days |
+  |----------|------:|----------------------:|
+  | A        |       |                       |
+  | B        |       |                       |
+  | C        |       |                       |
+  | D        |       |                       |
+
+Output: audit_outputs/kerberos_findings.md, prefix `KRB-`.
+
+Constraints:
+  - Read-only
+  - Do not paste keytab contents or credential values
+  - For each Category B/C/D, include the proposed replacement
+    explicitly so the refactor prompt can act on it
+  - Distinguish between "we use Kerberos to call X" and "we
+    receive a Kerberos request and process it" — those have
+    very different replacement paths
+  - For Hadoop / Spark surfaces specifically: flag whether the
+    target cluster supports OAuth (Knox / Ranger) — that's the
+    canonical replacement path at JPMC
+```
+
+---
+
 ## J. Pattern-violation audit
 
 This is the meta-audit: find every place that should have followed
