@@ -20,6 +20,8 @@
 - **Frontend**: dashboard with views for cost, replay, autonomy, audit, multi-chat, PM, agent rooms (WhatsApp-style with strands trace).
 - **Behavioral guardrails** (`AGENT_BEHAVIOR_GUARDRAILS.md`): 8 invariants (ask-before-change, no assumptions, langgraph-routed, no prompt overrides, no hardcoding, surface tradeoffs, professional tone, stop on ambiguity).
 - **Pattern docs**: `CARSON_PATTERNS.md` (12 sections), `CARSON_AGENT_TEMPLATES.md` (per-agent templates), `CARSON_AUDIT_PROMPTS.md` (10+ audits), `CARSON_REFACTOR_PROMPTS.md` (14 refactors).
+
+> **Note**: The files listed above (`AGENT_BEHAVIOR_GUARDRAILS.md`, `CARSON_PATTERNS.md`, `CARSON_AGENT_TEMPLATES.md`, `CARSON_AUDIT_PROMPTS.md`, `CARSON_REFACTOR_PROMPTS.md`) live in the **`high-touch-agent-prompts`** repo (the LangGraph working repo on Citrix), NOT in this personal documentation repo.
 - **Athena ingestion**: ChromaDB local files, embedded `/credit/**` (Python), basic chunking. NO JIRA chain, NO AST chunking, NO multi-view embeddings, NO type info in metadata, NO carson_facts integration.
 - **Bob job** (`athena_developer_bob_job.py`): runs autonomous coder operations on Athena, has Strands tools, BUT tool discovery is hardcoded — Carson cannot dynamically introspect available tools.
 
@@ -139,7 +141,7 @@ Replace hardcoded `tools=[t1, t2, t3]` with dynamic registry:
 
 ## 2. The Athena Audit Prompt (paste-ready)
 
-**File on disk**: `CARSON_ATHENA_AUDIT_PROMPT.md`. Read-only audit. Outputs markdown findings under `outputs/athena_audit/`.
+**File on disk**: `CARSON_ATHENA_AUDIT_PROMPT.md` (in the `high-touch-agent-prompts` repo, not this personal repo). Read-only audit. Outputs markdown findings under `outputs/athena_audit/`.
 
 ### Phases
 
@@ -166,7 +168,7 @@ Replace hardcoded `tools=[t1, t2, t3]` with dynamic registry:
 
 ## 3. The Execution Plan (paste-ready)
 
-**File on disk**: `CARSON_EXECUTION_PLAN.md`. Master playbook for running audits + refactors safely.
+**File on disk**: `CARSON_EXECUTION_PLAN.md` (in the `high-touch-agent-prompts` repo, not this personal repo). Master playbook for running audits + refactors safely.
 
 ### Three non-negotiable rules
 
@@ -188,7 +190,7 @@ Replace hardcoded `tools=[t1, t2, t3]` with dynamic registry:
 
 | Wave | Name | Risk | Description |
 |------|------|------|-------------|
-| **0** | Audits (read-only) | None | A-K from `CARSON_AUDIT_PROMPTS.md` + Athena audit. Triage findings before any refactor. |
+| **0** | Audits (read-only) | None | A-K from `CARSON_AUDIT_PROMPTS.md` (in `high-touch-agent-prompts`) + Athena audit. Triage findings before any refactor. |
 | **1** | Cosmetic | Low | RENAME (#1), DE-EMOJI (#2). Mechanical, large file count, no logic change. |
 | **2** | Config extraction | Low-Med | EXTRACT-CONFIG (#4), LOAD-BASE-SYSTEM (#5). Pulls hardcoded values into config. |
 | **3** | Carson consolidation | Medium | CARSON-CONSOLIDATE (#3). Single Carson identity. Risky after Wave 2 leaves no hardcoded refs. |
@@ -240,7 +242,7 @@ The new prompt must specify:
 
 ### 4.2 — Cross-repo design doc (`CARSON_HISTORY_CHAIN.md`)
 
-Companion to `CARSON_PATTERNS.md`. Covers:
+Companion to `CARSON_PATTERNS.md` (in `high-touch-agent-prompts`). Covers:
 
 - Per-repo chunker variations (Python AST, Terraform HCL, pipelines, configs).
 - Shared `jira_tickets` table schema in DynamoDB.
@@ -250,6 +252,8 @@ Companion to `CARSON_PATTERNS.md`. Covers:
 - Integration with `carson_facts` for self-improving metadata.
 
 ### 4.3 — AWS migration (separate track, post-Athena cleanup)
+
+> **⚠ FUTURE STATE — NOT CURRENT ARCHITECTURE.** Carson currently runs locally on Citrix VDI with ChromaDB. AWS migration is planned but not yet underway. Do not implement any of the items below until the local architecture is stable and the decision to migrate is made.
 
 - **Layer mapping**: ECS Fargate + ALB + DynamoDB + OpenSearch Serverless + S3 + Bedrock + Secrets Manager.
 - **5-tier memory**: L0 in-context, L1 ElastiCache (defer to v2), L2 DynamoDB, L3 OpenSearch, L4 S3.
@@ -306,8 +310,8 @@ Use section 3's wave list as a checklist. Tag each wave's start/done in git. Mai
 | `CARSON_COPILOT_STRATEGY.md` | Copilot integration strategy. Complementary — Copilot is the IDE client, this blueprint improves what Carson knows. |
 | `AMPS_SLOW_CONSUMER_REFACTOR_PROMPT.md` | AMPS performance fix. Separate concern but same infrastructure (AWS account reuse question). |
 | `CARSON_SELF_IMPROVEMENT_EXECUTION.md` | The Tier 1 execution prompt. This blueprint's Wave 0-8 sequence is the evolved version of the tier-based approach. |
-| `CARSON_PATTERNS.md` | 12 architectural patterns. This blueprint adds pattern #13 (multi-view retrieval) and #14 (history chain harvest). |
-| `AGENT_BEHAVIOR_GUARDRAILS.md` | 8 behavioral invariants. This blueprint respects all 8; Wave 6 strengthens #1 (ask-before-change) and #7 (critic loop). |
+| `CARSON_PATTERNS.md` *(in `high-touch-agent-prompts`)* | 12 architectural patterns. This blueprint adds pattern #13 (multi-view retrieval) and #14 (history chain harvest). |
+| `AGENT_BEHAVIOR_GUARDRAILS.md` *(in `high-touch-agent-prompts`)* | 8 behavioral invariants. This blueprint respects all 8; Wave 6 strengthens #1 (ask-before-change) and #7 (critic loop). |
 
 ---
 

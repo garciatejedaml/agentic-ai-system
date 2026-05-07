@@ -5,6 +5,9 @@
 **Replaces**: `langgraph-system/carson_agents/templates/dashboard.html` (current 130 KB monolith)
 **Companion**: `CARSON_AUDIT_FIXES.md` (fix index FIX #23–#25 references this file)
 
+> **⚠ IMPORTANT: This document describes the target architecture for Carson's dashboard.**
+> Carson currently runs **locally on Citrix VDI**. Sections referencing AWS services (DynamoDB, CloudWatch, X-Ray, ECS, ALB, WAF, OpenSearch, multi-region) describe the **planned cloud deployment**, not the current state. The current dashboard is the 130 KB monolith HTML served by FastAPI locally. Do not implement cloud-specific sections until the AWS migration decision is made.
+
 ---
 
 ## Table of contents
@@ -1193,6 +1196,8 @@ Grafana dashboards as JSON live in `infra/grafana/` and are provisioned via Terr
 
 ## Cloud deployment
 
+> **⚠ FUTURE STATE.** This section describes the planned AWS deployment. Carson currently runs locally on Citrix VDI.
+
 ### Where the dashboard runs
 
 The dashboard module is **part of the Carson FastAPI service** — same container image, same ECS task. Reasons:
@@ -1374,6 +1379,8 @@ Failure of the canary triggers a CloudWatch alarm → SNS → PagerDuty.
 
 ### Runbooks
 
+> **Planned — not yet written.** These runbooks will be created as part of the cloud deployment. They do not exist on disk yet.
+
 Stored in `docs/runbooks/`:
 
 - `RUNBOOK_dashboard_5xx.md` — the dashboard returns 5xx. Check ECS task health, ALB target group, recent deployments.
@@ -1384,6 +1391,8 @@ Stored in `docs/runbooks/`:
 ---
 
 ## Multi-region considerations
+
+> **⚠ FUTURE STATE.** Multi-region applies only after cloud migration is complete. Not applicable to the current local setup.
 
 ### Active-active read, single-region write
 

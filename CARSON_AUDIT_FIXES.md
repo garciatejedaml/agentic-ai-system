@@ -1824,6 +1824,9 @@ Apply this fix BEFORE FIX #19 (Flask→FastAPI) so the new FastAPI app's startup
 
 # Cloud transformation — AWS-ready
 
+> **⚠ FUTURE STATE — NOT CURRENT ARCHITECTURE.**
+> Carson currently runs **locally on Citrix VDI with ChromaDB and SQLite**. The AWS cloud transformation described in this section (CLD #1 through CLD #15) is a planned target state, **not yet implemented**. Do NOT execute any CLD fix until the local architecture is stable and the explicit decision to migrate has been made. All references to DynamoDB, ECS, CloudWatch, X-Ray, OpenSearch, WAF, ALB, multi-region, etc. in this section are aspirational.
+
 This section is the **platform-level work** — turning Carson from "a tool that runs on a Citrix VDI" into "a cloud-native multi-tenant service that any team in the org can deploy in 30 minutes". It complements the bug-level fixes above; both happen in the same 26-week roadmap.
 
 ## Containerization (CLD #1)
@@ -2429,7 +2432,7 @@ Strategy: **warm standby** in `us-west-2`.
 
 RTO target: < 1 hour. RPO target: < 15 minutes.
 
-DR runbook (separate document `CARSON_DR_RUNBOOK.md`).
+DR runbook (separate document `CARSON_DR_RUNBOOK.md` — **planned, not yet written**).
 
 ---
 
@@ -3450,6 +3453,8 @@ resource "aws_sns_topic_subscription" "pagerduty" {
 
 ### Runbooks
 
+> **Planned — not yet written.** These runbooks will be created as part of the cloud transformation. They do not exist on disk yet.
+
 For each alarm, a runbook lives in `docs/runbooks/`:
 
 - `RUNBOOK_high_5xx.md` — diagnosis steps, rollback procedure.
@@ -3460,6 +3465,8 @@ For each alarm, a runbook lives in `docs/runbooks/`:
 ---
 
 # Phased roadmap (26-week plan)
+
+> **⚠ FUTURE STATE.** This roadmap assumes the AWS cloud transformation is underway. Phases 2-6 depend on CLD fixes that are NOT yet implemented. Currently only Phase 1 (local bug fixes) and Phase 5 (code quality fixes) are actionable on the local Citrix VDI setup. All other phases require the cloud migration decision first.
 
 A timeline from "fix the worst" to "platform-grade". Each phase has a clear exit criterion.
 
